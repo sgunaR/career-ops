@@ -1,5 +1,4 @@
-# Personal data (each collaborator keeps their own — copy from examples/templates)
-cv.md
+# Personal / optional (ignored). Main cv.md is tracked on this fork — see bottom.
 cv-full-stack.md
 cv-backend.md
 cv-ai-engineering.md
@@ -101,10 +100,9 @@ interview-prep/sessions/*
 writing-samples/*
 !writing-samples/README.md
 
-# Personal profile / voice (each person: copy *.example / *.template → local file)
-# Shared team setup on this fork is NOT ignored: portals.yml, modes/_profile.md,
-# modes/_custom.md — so collaborators get the same boards + targeting + house rules.
-config/profile.yml
+# Shared on this fork (tracked — do not list here): portals.yml, modes/_profile.md,
+# modes/_custom.md, cv.md, config/profile.yml. Collaborators clone then edit
+# profile/CV for themselves.
 config/cv-facts.json
 config/benchmarks.yml
 modes/_brief.md
@@ -277,10 +275,15 @@ data/interview-prep/
 /tectonic.part.exe
 
 # ── This fork (sgunaR/career-ops) ──
-# Ignore scrapes / PDFs / scratch. Shared setup (portals.yml, modes/_profile.md,
-# modes/_custom.md) is tracked. Personal CV + config/profile.yml stay local —
-# each collaborator copies config/profile.example.yml → config/profile.yml and
-# writes their own cv.md (see doctor.mjs --init-templates).
+# Tracked for the team: portals.yml, modes/_profile.md, modes/_custom.md,
+# cv.md, config/profile.yml. Ignore scrapes / PDFs / scratch only.
 /tmp/
 web/output.log
 rishika-sairi-cv.md
+
+# Ensure shared starter files stay trackable if an upstream rule reappears
+!cv.md
+!config/profile.yml
+!portals.yml
+!modes/_profile.md
+!modes/_custom.md

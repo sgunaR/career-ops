@@ -16,12 +16,13 @@ git checkout feature/sguna-customizations
 
 ## What is shared vs yours alone
 
-| Shared (already in the repo) | Yours only (never commit) |
-|------------------------------|---------------------------|
-| `portals.yml` — boards & filters | `config/profile.yml` — name, email, salary |
-| `modes/_profile.md` — role archetypes | `cv.md` — your résumé |
-| `modes/_custom.md` — team workflow | `local/` — CV template, india-scan runtime, scrapers |
-| Providers, `/local` web UI, india-scan **templates** | `data/`, `output/`, `reports/`, `jds/`, `tmp/` — scans & PDFs |
+| Shared starter (already in the repo — edit for yourself) | Keep local / do not commit |
+|----------------------------------------------------------|----------------------------|
+| `portals.yml` — boards & filters | `local/` — CV template, india-scan runtime |
+| `modes/_profile.md` — role archetypes | `data/`, `output/`, `reports/`, `jds/`, `tmp/` |
+| `modes/_custom.md` — team workflow | `.env`, scan history, generated PDFs |
+| `cv.md` + `config/profile.yml` — **replace with your details** | |
+| Providers, `/local` web UI, india-scan **templates** | |
 
 ---
 
@@ -45,31 +46,29 @@ npx playwright install chromium
 
 ---
 
-## 3. Create your personal profile + CV
+## 3. Make the starter profile + CV yours
+
+The repo already includes `cv.md` and `config/profile.yml` as a **starter**.  
+**Edit both** so they are *your* name, contact, experience, and targets — do not leave someone else’s details.
 
 ```bash
-# Profile (required)
-cp config/profile.example.yml config/profile.yml
-# Edit config/profile.yml — your name, email, location, target roles, salary, etc.
-
-# CV (required) — create cv.md in the repo root
-# Paste your résumé in markdown, or ask the AI in this repo:
-#   "Set up my CV from this text / LinkedIn"
+# Open and rewrite for yourself:
+#   config/profile.yml
+#   cv.md
+# Or ask the AI: "Replace the profile and CV with my details from …"
 ```
 
-Optional templates (if missing):
+Optional extras (if you want brief / voice):
 
 ```bash
 node doctor.mjs --json --init-templates
-# Then edit modes/_brief.md / voice-dna.md if you want; leave team _profile/_custom alone unless you mean to change shared targeting.
 ```
 
-Check that onboarding is happy:
+Check:
 
 ```bash
 node doctor.mjs --json
 # Want: "onboardingNeeded": false
-# "missing" should be empty. Fix anything listed under missing / unpersonalized.
 ```
 
 ---
@@ -177,13 +176,13 @@ Your `cv.md`, `config/profile.yml`, `local/`, and `data/` stay local and are not
 
 ---
 
-## 9. Do not commit
+## 9. What to commit vs not
 
-- `cv.md`, `config/profile.yml`, `.env`  
-- `local/`, `data/`, `output/`, `reports/`, `jds/`, `tmp/`  
-- PDFs, scan history, application tracker contents  
+**OK to commit (team):** `portals.yml`, modes, providers, docs, and updates to the shared starter `cv.md` / `config/profile.yml` only when you intend the whole team to get that change.
 
-If `git status` shows those, leave them unstaged. Shared setup changes (`portals.yml`, modes, providers) go through a PR on `feature/sguna-customizations`.
+**Do not commit:** `.env`, `local/`, `data/`, `output/`, `reports/`, `jds/`, `tmp/`, PDFs, scan history.
+
+If you only customized profile/CV for yourself on a shared machine, avoid pushing those personal edits unless the team agrees.
 
 ---
 
