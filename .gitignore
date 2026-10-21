@@ -5,7 +5,9 @@ cv-ai-engineering.md
 cv-sap-btp-cpi.md
 cv-devops-cloud-delivery.md
 article-digest.md
-local/
+# Root-only toolkit (india-scan runtime, LaTeX CV). MUST be anchored with / —
+# a bare `local/` also matched web/src/app/local and hid the dashboard routes (404).
+/local/
 # Data-root marker (DATA_CONTRACT.md "Custom Data Directory"). It holds a path
 # on this machine only, so committing it would point every other clone at a
 # directory that does not exist there.

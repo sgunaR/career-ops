@@ -321,7 +321,7 @@ After you personalize `cv.md` / `profile.yml` for yourself, prefer keeping those
 | `onboardingNeeded: true` | Finish editing `cv.md` + `config/profile.yml` (see §3); re-run `node doctor.mjs --json` |
 | No `local/india-scan` | `node templates/india-scan/bootstrap.mjs` |
 | India board empty / blocked | Run `--login <board>` once; see `templates/india-scan/README.md` |
-| `/local` pages missing after pull | Ask for `node local/restore-dashboard-local.mjs` (needs `local/` toolkit) or re-check you are on `feature/sguna-customizations` |
+| `/local` is **404** | Pull latest `feature/sguna-customizations` (routes live under `web/src/app/local/` and must be tracked). Restart `cd web && npm run dev`. You do **not** need root `local/` for the dashboard pages. |
 | Playwright errors | `npx playwright install chromium` |
 
 More detail: [`docs/portal-expansion-plan.md`](docs/portal-expansion-plan.md) · [`docs/portal-expansion-reference.md`](docs/portal-expansion-reference.md) · [`templates/india-scan/README.md`](templates/india-scan/README.md)
