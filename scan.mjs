@@ -59,6 +59,7 @@ import path from 'path';
 import * as yaml from 'js-yaml';
 
 import { makeHttpCtx } from './providers/_http.mjs';
+import { resolveProfileKeywords } from './providers/_profile-keywords.mjs';
 import { buildTrustValidator } from './providers/_trust-validator.mjs';
 import { loadProviders, resolveProvider } from './providers/_registry.mjs';
 import { mergeProviderPlugins } from './plugins/_engine.mjs';
@@ -653,7 +654,7 @@ export function buildLocationFilter(locationFilter) {
 
 // ── Posting-age filter ──────────────────────────────────────────────
 // Optional opt-in. If `max_posting_age_days` is absent (or not a positive
-// integer) in portals.yml, every offer passes. An offer is skipped only when
+// number) in portals.yml, every offer passes. An offer is skipped only when
 // the provider supplied a postedAt (epoch ms) AND it is older than N days.
 // Offers with no date always pass — same "don't penalize missing data"
 // convention as the location filter. `now` is injectable for deterministic tests.
@@ -665,6 +666,77 @@ export function buildPostingAgeFilter(maxAgeDays, now = Date.now()) {
     if (typeof postedAt !== 'number' || !Number.isFinite(postedAt)) return true;
     return postedAt >= cutoff;
   };
+}
+
+// Per-entry override of the global freshness window (portals.yml tracked_companies /
+// job_boards entry fields, not the top-level config). Some sources' dates don't behave
+// like a rolling feed's, so the global 24-48h window is actively WRONG for them rather
+// than just conservative:
+//   - `posting_age_filter: false` — the date exists but doesn't reflect real freshness for
+//     this source (e.g. a startup-portfolio board not sorted by date, so a fetched page
+//     mixes years-old and same-day postings with no correlation to what's actually new).
+//     Every posting passes regardless of age; title/location filtering still applies.
+//   - `posting_age_hours: N` — a longer (or shorter) window fits this source's own
+//     lifecycle better than the global one (e.g. a monthly "who is hiring" thread stays
+//     fully valid for the whole month, not just 48h).
+// Priority sorting (buildPostingAgePriority) is deliberately NOT overridden here: an old
+// posting from an exempted source still won't be treated as "fresh", it just isn't dropped.
+// Caveat: a per-entry `posting_age_hours` WIDER than the global window is not reflected in
+// the pagination early-stop hint (ctx.sinceMs, built once from the global window before any
+// entry is fetched) — a provider that stops paging once it sees postings past that global
+// cutoff could stop before reaching postings this override would still keep. Harmless for the
+// two overrides below (HN's parser fetches one thread in full, no date-based early stop;
+// Speedrun's override only widens what's KEPT, not what's fetched). A future wider override
+// on a provider that does early-stop by date would need `ctx.sinceMs` computed per entry too.
+export function resolveEntryAgeFilter(entry, fallbackFilter, now = Date.now()) {
+  if (entry?.posting_age_filter === false) return () => true;
+  const hours = Number(entry?.posting_age_hours);
+  if (Number.isFinite(hours) && hours > 0) {
+    return buildPostingAgeFilter(Math.max(1, Math.round(hours / 24)), now);
+  }
+  return fallbackFilter;
+}
+
+// `max_posting_age_hours` (finer-grained) takes precedence over the older
+// `max_posting_age_days` when both are set. Centralised so every caller
+// (scan.mjs itself, the India scanner, the outside-India audit) resolves the
+// same effective window the same way. Always returns an integer day count (or
+// whatever max_posting_age_days was) so it composes with buildPostingAgeFilter
+// / resolveEarlyStopMs exactly as before — those two stay untouched and keep
+// their tested "non-integer/0/negative = disabled" contract. Rounded rather
+// than floored/ceiled so 36h doesn't silently disable the filter (floor) or
+// quietly double it (ceil) — it lands on 2 days, the nearer whole-day bound.
+export function resolveMaxAgeDays(config) {
+  const hours = Number(config?.max_posting_age_hours);
+  if (Number.isFinite(hours) && hours > 0) return Math.max(1, Math.round(hours / 24));
+  return config?.max_posting_age_days;
+}
+
+// ── Posting-age PRIORITY (not a cutoff) ─────────────────────────────
+// Independent of buildPostingAgeFilter, which decides keep/drop. This only
+// answers "is this fresh enough to go first" — e.g. `priority_posting_age_hours:
+// 24` alongside `max_posting_age_hours: 48` means: nothing older than 48h is
+// kept, but of what's kept, postings from the last 24h are surfaced first. A
+// posting with no date is never priority (undated jobs also sort last).
+export function buildPostingAgePriority(maxAgeHours, now = Date.now()) {
+  const max = Number(maxAgeHours);
+  if (!Number.isFinite(max) || max <= 0) return () => false;
+  const cutoff = now - max * 60 * 60 * 1000;
+  return (postedAt) => typeof postedAt === 'number' && Number.isFinite(postedAt) && postedAt >= cutoff;
+}
+
+/**
+ * Sort offers freshest-and-priority-first: priority window first, then by
+ * postedAt descending within each group, undated offers last (stable order
+ * preserved among undated offers and among ties).
+ * @param {Array<{postedAt?: number}>} offers
+ * @param {(postedAt: number|undefined) => boolean} isPriority
+ */
+export function sortByFreshness(offers, isPriority) {
+  return offers
+    .map((o, i) => ({ o, i, p: isPriority(o.postedAt) ? 1 : 0, t: typeof o.postedAt === 'number' && Number.isFinite(o.postedAt) ? o.postedAt : -Infinity }))
+    .sort((a, b) => b.p - a.p || b.t - a.t || a.i - b.i)
+    .map((x) => x.o);
 }
 
 // ── Posted-date lower bound (shared by the filter and the early-stop) ──
@@ -4092,12 +4164,16 @@ async function main() {
   }
 
   const locationFilter = buildLocationFilter(config.location_filter);
-  const postingAgeFilter = buildPostingAgeFilter(config.max_posting_age_days);
+  // max_posting_age_hours (finer-grained) wins over the older max_posting_age_days
+  // when both are set — see resolveMaxAgeDays.
+  const effectiveMaxAgeDays = resolveMaxAgeDays(config);
+  const postingAgeFilter = buildPostingAgeFilter(effectiveMaxAgeDays);
+  const postingAgePriority = buildPostingAgePriority(config.priority_posting_age_hours);
   const postedDateFilter = buildPostedDateFilter(effectiveAfter, postedBefore);
 
   // Same bound the filter above uses, widened by max_posting_age_days when set.
   // Derived by the same helper so the hint and the filter cannot disagree.
-  const earlyStopSinceMs = resolveEarlyStopMs(effectiveAfter, config.max_posting_age_days);
+  const earlyStopSinceMs = resolveEarlyStopMs(effectiveAfter, effectiveMaxAgeDays);
   const salaryFilter = buildSalaryFilter(config.salary_filter);
   const trustValidator = buildTrustValidator(config.trust_filter);
   const contentFilter = buildContentFilter(config.content_filter);
@@ -4325,8 +4401,12 @@ async function main() {
     });
   }
 
+  const scanRoleKeywords = resolveProfileKeywords();
   const tasks = targets.map(company => async () => {
     let provider = company._provider;
+    // Per-entry freshness override (posting_age_filter: false / posting_age_hours: N on this
+    // tracked_companies entry) — see resolveEntryAgeFilter for why some sources need one.
+    const entryAgeFilter = resolveEntryAgeFilter(company, postingAgeFilter);
     const observation = { requests: 0, successfulResponses: 0, lastStatus: null };
     // includeUndated is deliberately ALWAYS true, independent of the window.
     // It does not mean "include undated postings in the results" — scan.mjs
@@ -4353,6 +4433,10 @@ async function main() {
       sinceMs: earlyStopSinceMs,
       includeUndated: true,
       locationHints: config.location_filter,
+      // a16z-speedrun-talent searches each of these on its own when the entry
+      // has no q: / keywords:. Other providers ignore them.
+      titleKeywords: Array.isArray(config.title_filter?.positive) ? config.title_filter.positive : [],
+      roleKeywords: scanRoleKeywords,
       // A provider that serves extra language versions of a posting at extra
       // cost fetches them only when the scan will keep them.
       dedupIncludeLanguage,
@@ -4479,7 +4563,7 @@ async function main() {
           if (!dryRun) locationFilteredOffers.push({ ...job, source: sourceName });
           continue;
         }
-        if (!postingAgeFilter(job.postedAt)) {
+        if (!entryAgeFilter(job.postedAt)) {
           totalFilteredPostingAge++;
           if (!dryRun) ageFilteredOffers.push({ ...job, source: sourceName });
           continue;
@@ -4661,6 +4745,13 @@ async function main() {
     }
     verifiedOffers = acceptedOffers;
   }
+
+  // 5.65. Freshness ordering (not a filter — postingAgeFilter already dropped
+  // anything past max_posting_age_hours/days). Postings inside
+  // priority_posting_age_hours sort first, so the newest work surfaces at the
+  // top of data/pipeline.md and data/scan-history.tsv without changing what
+  // was kept.
+  verifiedOffers = sortByFreshness(verifiedOffers, postingAgePriority);
 
   // 5.7. Cross-listing check (#1597): fingerprint each new offer's JD body and
   // compare against recent history rows from a DIFFERENT company — the same

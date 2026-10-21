@@ -1,5 +1,10 @@
 # Personal data (user fills these)
 cv.md
+cv-full-stack.md
+cv-backend.md
+cv-ai-engineering.md
+cv-sap-btp-cpi.md
+cv-devops-cloud-delivery.md
 article-digest.md
 local/
 # Data-root marker (DATA_CONTRACT.md "Custom Data Directory"). It holds a path
@@ -26,10 +31,6 @@ data/parser-output/**
 !data/parser-output/.gitkeep
 !data/parser-output/**/.gitkeep
 reports/*.md
-# Single-level glob above misses subdirectories (e.g. reports/superseded/).
-# Kept alongside it rather than replacing it, so update-system.mjs does not
-# re-append the original pattern as "missing".
-reports/**/*.md
 !reports/.gitkeep
 /output
 !/output/
@@ -272,3 +273,16 @@ data/interview-prep/
 /tectonic.exe
 /tectonic.part
 /tectonic.part.exe
+
+# ── This fork (sgunaR/career-ops): ignore scrape / PDF / scratch; track shared config ──
+/tmp/
+web/output.log
+rishika-sairi-cv.md
+
+# Override upstream "never commit" defaults so the fork can share targeting + CV.
+# Still keep local/, data/, output/, reports/, jds/ ignored (scan history & PDFs).
+!cv.md
+!portals.yml
+!config/profile.yml
+!modes/_profile.md
+!modes/_custom.md

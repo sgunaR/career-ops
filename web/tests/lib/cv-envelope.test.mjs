@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCvEnvelope, createCvEnvelopeFilter } from "../../src/lib/cv-envelope.mjs";
+import { CV_ENVELOPE_INSTRUCTION, parseCvEnvelope, createCvEnvelopeFilter } from "../../src/lib/cv-envelope.mjs";
 
 /** Wrap `body` in a well-formed envelope; `format: null` omits the attribute. */
 function envelope(body, format = "a4") {
@@ -21,6 +21,12 @@ function envelope(body, format = "a4") {
 }
 
 const DOC = "<!DOCTYPE html>\n<html><body><h1>Jane</h1></body></html>";
+
+test("CV_ENVELOPE_INSTRUCTION requires an unfenced marker-first response", () => {
+  assert.match(CV_ENVELOPE_INSTRUCTION, /very first output line/i);
+  assert.match(CV_ENVELOPE_INSTRUCTION, /Do not add an introduction/i);
+  assert.match(CV_ENVELOPE_INSTRUCTION, /Markdown code fence/i);
+});
 
 test("parseCvEnvelope: extracts html and format from a well-formed envelope", () => {
   // Given an agent reply with prose, an envelope, and a trailing VERDICT line
@@ -84,6 +90,23 @@ test("parseCvEnvelope: no envelope at all is a failure", () => {
   const result = parseCvEnvelope("I tailored the CV and saved it.\n\nVERDICT: 5/5 — done");
 
   // Then the run must fail rather than render nothing and report success
+  assert.equal(result.ok, false);
+  assert.match(result.error, /no .*envelope/i);
+});
+
+test("parseCvEnvelope: recovers a complete document with an omitted opener", () => {
+  // Some long headless responses preserve the closer but drop the first marker.
+  const result = parseCvEnvelope(`Here is the tailored CV:\n\`\`\`html\n${DOC}\n<</cv-html>>`);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.html, DOC);
+  assert.equal(result.format, "letter");
+  assert.match(result.warnings[0], /omitted the opening marker/i);
+});
+
+test("parseCvEnvelope: omitted opener recovery rejects incomplete documents", () => {
+  const result = parseCvEnvelope("<!DOCTYPE html>\n<html>\n<</cv-html>>");
+
   assert.equal(result.ok, false);
   assert.match(result.error, /no .*envelope/i);
 });

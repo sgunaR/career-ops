@@ -57,8 +57,8 @@ test("Assessment history never becomes an interview or offer after rebasing main
   assert.deepEqual(computeProgressMetrics(applications, achievements).funnel.map(stage => stage.count), [6, 5, 5, 3, 2]);
 });
 
-test("one view resolver selects all three views and defaults unknown values", () => {
-  for (const view of ["progress", "insights", "search-stats"]) {
+test("one view resolver selects all four views and defaults unknown values", () => {
+  for (const view of ["progress", "insights", "search-stats", "calendar"]) {
     assert.equal(resolveAnalyticsView(view), view);
     assert.equal(resolveAnalyticsView([view, "bogus"]), view);
   }

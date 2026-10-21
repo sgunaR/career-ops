@@ -270,6 +270,30 @@ try {
   if (new URL(kwCalls[0]).searchParams.get('q') === 'machine learning') pass('fetch() falls back to joined keywords[] when q: is absent');
   else fail(`keywords fallback q = ${JSON.stringify(new URL(kwCalls[0]).searchParams.get('q'))}`);
 
+  // No q: and no keywords: one request per configured title and role, deduped.
+  const cfgCalls = [];
+  const cfgCtx = {
+    titleKeywords: ['Software Engineer', 'word:skip', 'SAP CPI'],
+    roleKeywords: ['software engineer', 'Full Stack Engineer'],
+    fetchJson: async (url) => {
+      cfgCalls.push(url);
+      const q = new URL(url).searchParams.get('q');
+      const n = q === 'Software Engineer' ? 1 : q === 'SAP CPI' ? 2 : 3;
+      return { jobs: [mk(n)], total_pages: 1 };
+    },
+  };
+  const cfgJobs = await provider.fetch({ name: 'a16z Speedrun Talent', max_pages: 2 }, cfgCtx);
+  const cfgQs = cfgCalls.map((u) => new URL(u).searchParams.get('q'));
+  if (cfgQs.length === 3
+    && cfgQs[0] === 'Software Engineer'
+    && cfgQs[1] === 'SAP CPI'
+    && cfgQs[2] === 'Full Stack Engineer'
+    && cfgJobs.length === 3) {
+    pass('fetch() searches each configured title and role, skips word: prefixes, dedupes case');
+  } else {
+    fail(`configured queries = ${JSON.stringify({ cfgQs, jobs: cfgJobs.length })}`);
+  }
+
   // DEFAULT_MAX_PAGES: with no max_pages on the entry, the default budget
   // covers 6 pages × 50 = 300 jobs — the same 300-job default scan the
   // pre-#2419 constants encoded as 3 × 100. Pages derive from the requested

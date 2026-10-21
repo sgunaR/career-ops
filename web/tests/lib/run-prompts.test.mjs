@@ -35,6 +35,7 @@ test("buildPrompt: the pdf prompt asks for the envelope and forbids saving", () 
   // ...and tells it not to save, so an agent that ignores the envelope has been
   // told twice
   assert.match(prompt, /Do NOT save or edit any file/i);
+  assert.match(prompt, /do not run doctor\.mjs, update-system\.mjs, any other shell command/i);
 });
 
 test("buildPrompt: the pdf prompt does not claim the agent has no write tools", () => {

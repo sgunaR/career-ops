@@ -12,7 +12,10 @@ import { spawnHeadlessCli } from "@/lib/spawn-cli.mjs";
 import { careerOpsRoot, readMemory, findReportFile, readInbox, readScanDates, readLanguageConfig } from "@/lib/career-ops";
 import { resolvePdfPaths, type PdfPaths } from "@/lib/pdf-paths.mjs";
 import { renderAndMarkPdf, writeCvHtml, pdfRunOutcome } from "@/lib/pdf-render.mjs";
+import { renderSmallcapsAndMark, writeCvJson } from "@/lib/pdf-house-style.mjs";
+import { detectCvHouseStyle } from "@/lib/cv-house-style.mjs";
 import { createCvEnvelopeFilter, type CvEnvelope } from "@/lib/cv-envelope.mjs";
+import { createCvJsonEnvelopeFilter } from "@/lib/cv-json-envelope.mjs";
 import { createReportEnvelopeFilter } from "@/lib/report-envelope.mjs";
 import { persistEvaluation, evaluateRunOutcome } from "@/lib/report-persist.mjs";
 import { buildPrompt, isShellSafeCompanyName } from "@/lib/run-prompts.mjs";
@@ -141,6 +144,9 @@ export async function POST(req: Request) {
   // The root is passed, not re-derived: a relative CAREER_OPS_PROFILE resolves
   // against it, and `process.cwd()` here is `<core>/web` (see cv-template.mjs).
   const cvTemplate = kind === "pdf" ? await resolveCvTemplate(careerOpsRoot()) : undefined;
+  // local/cv-template.smallcaps.tex is the user's current CV. The HTML template
+  // stays the fallback when that house style is not installed.
+  const houseStyle = kind === "pdf" ? detectCvHouseStyle(careerOpsRoot()) : "html";
   const prompt = buildPrompt({
     kind,
     input,
@@ -149,6 +155,7 @@ export async function POST(req: Request) {
     postedAt,
     lang,
     cvTemplate,
+    houseStyle,
     reportFile: pdfPaths?.reportFile ?? (coverRequest?.ok ? coverRequest.reportFile : undefined),
     coverBrief: coverRequest?.ok ? coverRequest.brief : undefined,
   });
@@ -332,7 +339,9 @@ export async function POST(req: Request) {
       // pdf's CV arrives inline in a <<cv-html>> envelope (#2185); evaluate's
       // report arrives in a <<report-md>> envelope. The filter keeps every byte
       // for the backend while holding the body out of the run log.
-      const cvFilter = kind === "pdf" ? createCvEnvelopeFilter() : null;
+      const cvFilter = kind === "pdf"
+        ? (houseStyle === "smallcaps" ? createCvJsonEnvelopeFilter() : createCvEnvelopeFilter())
+        : null;
       const reportFilter = kind === "evaluate" ? createReportEnvelopeFilter() : null;
       // While the agent emits the 15-25 KB <<cv-html>> envelope, cvFilter swallows
       // every byte, so the response stream goes completely silent for as long as
@@ -352,8 +361,10 @@ export async function POST(req: Request) {
         for (const w of warnings) send({ type: "text", text: `⚠️ ${w}\n` });
       };
       /** Persist the emitted CV; streams the reason and returns false on failure. */
-      const saveCv = (paths: PdfPaths, envelope: CvEnvelope) => {
-        const written = writeCvHtml({ pdfPaths: paths, html: envelope.html });
+      const saveCv = (paths: PdfPaths, envelope: CvEnvelope | { ok: true; payload: object; warnings: string[] }) => {
+        const written = houseStyle === "smallcaps" && "payload" in envelope
+          ? writeCvJson({ pdfPaths: paths, payload: envelope.payload })
+          : writeCvHtml({ pdfPaths: paths, html: "html" in envelope ? envelope.html : "" });
         if (!written.ok) send({ type: "error", msg: written.error.slice(0, 200) });
         return written.ok;
       };
@@ -464,14 +475,22 @@ export async function POST(req: Request) {
         // unexpected exception here must still close the stream instead of
         // leaving it — and the write-token — open until process shutdown.
         try {
-          const result = await renderAndMarkPdf({
-            spawnFn: spawn,
-            execPath: process.execPath,
-            root: careerOpsRoot(),
-            pdfPaths: paths,
-            format,
-            reportNum: paths.reportNum,
-          });
+          const result = houseStyle === "smallcaps"
+            ? await renderSmallcapsAndMark({
+              spawnFn: spawn,
+              execPath: process.execPath,
+              root: careerOpsRoot(),
+              pdfPaths: paths,
+              reportNum: paths.reportNum,
+            })
+            : await renderAndMarkPdf({
+              spawnFn: spawn,
+              execPath: process.execPath,
+              root: careerOpsRoot(),
+              pdfPaths: paths,
+              format,
+              reportNum: paths.reportNum,
+            });
           if (result.kind === "render-failed") {
             send({ type: "error", msg: result.error.slice(0, 200) });
             return;
@@ -560,7 +579,7 @@ export async function POST(req: Request) {
             if (saveCv(pdfPaths, envelope)) {
               // Tracked so cancel() can defer releasing writeToken until this
               // settles; close() happens once rendering finishes, not here.
-              pdfRenderPromise = renderPdf(pdfPaths, envelope.format);
+              pdfRenderPromise = renderPdf(pdfPaths, "format" in envelope && envelope.format === "a4" ? "a4" : "letter");
               return;
             }
             // saveCv already streamed the specific reason.

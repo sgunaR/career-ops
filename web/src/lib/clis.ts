@@ -63,7 +63,7 @@ export const KNOWN: CliSpec[] = [
   { id: "gemini", name: "Gemini CLI", bin: "gemini", run: "gemini -p", url: "https://github.com/google-gemini/gemini-cli", args: (p) => ["-p", p] },
   { id: "opencode", name: "OpenCode", bin: "opencode", run: "opencode run", url: "https://opencode.ai", args: (p) => ["run", p] },
   { id: "pi", name: "Pi", bin: "pi", run: "pi -p", url: "https://github.com/earendil-works/pi", args: (p) => ["--no-session", "-p", p] },
-  { id: "copilot", name: "GitHub Copilot CLI", bin: "copilot", run: "copilot -p", url: "https://docs.github.com/en/copilot/github-copilot-in-the-cli", args: (p) => ["-p", p] },
+  { id: "copilot", name: "GitHub Copilot CLI", bin: "copilot", run: "copilot -p --silent", url: "https://docs.github.com/en/copilot/github-copilot-in-the-cli", args: (p) => ["-p", p, "--silent"] },
   { id: "qwen", name: "Qwen CLI", bin: "qwen", run: "qwen -p", url: "https://qwen.ai/qwencode", args: (p) => ["-p", p] },
   { id: "antigravity", name: "Antigravity CLI", bin: "agy", run: "agy -p", url: "https://antigravity.google", args: (p) => ["-p", p] },
   // Grok Build speaks its own `--output-format streaming-json` schema, not
@@ -116,8 +116,16 @@ function binCandidates(bin: string): string[] {
     // Only include extensions that `child_process.spawn()` can execute directly.
     .filter((e) => [".com", ".exe", ".bat", ".cmd"].includes(e.toLowerCase()));
 
-  // Try the bare name too (some environments provide an extensionless shim).
-  return [bin, ...exts.map((ext) => bin + ext)];
+  // An extensionless Unix shim can exist beside Windows launchers (for example
+  // VS Code's Copilot install). Node cannot spawn that file on Windows, so do
+  // not select it ahead of the real launcher. Prefer PowerShell wrappers when
+  // present; spawn-cli.mjs invokes them through powershell.exe.
+  const orderedExts = [
+    ".exe",
+    ".ps1",
+    ...exts.filter((ext) => ![".exe", ".ps1"].includes(ext.toLowerCase())),
+  ];
+  return [...new Set(orderedExts)].map((ext) => bin + ext);
 }
 
 export function findBin(bin: string, dirs = searchDirs()): string | null {

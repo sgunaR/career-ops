@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
-import { spawnHeadlessCli } from "../../src/lib/spawn-cli.mjs";
+import { resolveSpawnCommand, spawnHeadlessCli } from "../../src/lib/spawn-cli.mjs";
 import { CAPS } from "../../src/lib/worker-capabilities.mjs";
 
 // Fencing is required at every call site (#2507). These cases are about stdin,
@@ -17,6 +17,29 @@ import { CAPS } from "../../src/lib/worker-capabilities.mjs";
 // what each case wrote. (claude would be wrong here — it now VERIFIES the argv
 // carries a deny list, which a bare `node -e` script does not.)
 const PASSTHROUGH = { cliId: "gemini", capabilities: CAPS.localReadOnly };
+
+test("spawnHeadlessCli uses PowerShell for Windows .ps1 launchers", () => {
+  // The Copilot CLI installed by the VS Code extension includes an extensionless
+  // Unix shim beside copilot.ps1. Windows Node cannot spawn the shim directly.
+  // This test documents the command shape without depending on the host OS.
+  assert.deepEqual(
+    resolveSpawnCommand("C:\\tools\\copilot.ps1", ["-p", "hello"], { platform: "win32" }),
+    {
+      command: "powershell.exe",
+      commandArgs: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\tools\\copilot.ps1", "-p", "hello"],
+    },
+  );
+});
+
+test("spawnHeadlessCli uses cmd.exe for Windows batch launchers", () => {
+  assert.deepEqual(
+    resolveSpawnCommand("C:\\tools\\copilot.bat", ["-p", "hello"], { platform: "win32", comSpec: "C:\\Windows\\System32\\cmd.exe" }),
+    {
+      command: "C:\\Windows\\System32\\cmd.exe",
+      commandArgs: ["/d", "/s", "/c", "call", "C:\\tools\\copilot.bat", "-p", "hello"],
+    },
+  );
+});
 
 test("spawnHeadlessCli closes stdin so a headless CLI can start", async () => {
   // Given: a child that only speaks once its stdin has reached EOF — a stand-in

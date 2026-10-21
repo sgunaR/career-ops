@@ -62,6 +62,10 @@ test("Grok Build CLI is wired up", () => {
   assert.match(src, /bin:\s*"grok"/, "the grok entry must spawn the `grok` binary");
 });
 
+test("Copilot headless runs suppress CLI completion metadata", () => {
+  assert.match(src, /id:\s*"copilot"[^\n]*args:\s*\(p\)\s*=>\s*\["-p",\s*p,\s*"--silent"\]/);
+});
+
 test("no CLI is listed twice", () => {
   const ids = [...src.matchAll(/id:\s*"([^"]+)"/g)].map((m) => m[1]);
   assert.equal(new Set(ids).size, ids.length, `duplicate id in KNOWN: ${ids.join(", ")}`);

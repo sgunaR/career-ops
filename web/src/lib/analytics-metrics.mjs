@@ -120,7 +120,7 @@ export function computeProgressMetrics(applications = [], achievements) {
 /** Match main's URL-driven views; unknown/missing values keep Progress useful. */
 export function resolveAnalyticsView(raw) {
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return value === "search-stats" || value === "insights" ? value : "progress";
+  return value === "search-stats" || value === "insights" || value === "calendar" ? value : "progress";
 }
 
 function isoWeek(date) {

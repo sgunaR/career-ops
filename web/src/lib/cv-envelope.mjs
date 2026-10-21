@@ -60,7 +60,7 @@ const CLOSER_ALL = new RegExp(CLOSER_SRC, "gm");
  * capabilities invites it to test the claim.
  */
 export const CV_ENVELOPE_INSTRUCTION =
-  `Do NOT save or edit any file — the platform persists your output for you. Instead OUTPUT the finished HTML inline, between two marker lines. The first line contains only the opening marker carrying your chosen page format — \`${OPEN_MARK} format="a4">>\` or \`${OPEN_MARK} format="letter">>\`, and nothing else on that line. Choose letter for a US/Canada company, otherwise a4. Then the complete HTML document, then a final line containing only \`${CLOSE_MARK}\`. Each marker appears exactly once. Emit the WHOLE document from <!DOCTYPE html> to </html> — never abbreviate, summarize, or write "unchanged"; the platform renders exactly these bytes and nothing else.`;
+  `Do NOT save or edit any file — the platform persists your output for you. Output ONLY the finished HTML envelope: the very first output line must contain only the opening marker carrying your chosen page format — \`${OPEN_MARK} format="a4">>\` or \`${OPEN_MARK} format="letter">>\`, and nothing else on that line. Do not add an introduction, explanation, Markdown code fence, or \`html\` fence before or around the envelope. Choose letter for a US/Canada company, otherwise a4. Then the complete HTML document, then a final line containing only \`${CLOSE_MARK}\`. Each marker appears exactly once. Emit the WHOLE document from <!DOCTYPE html> to </html> — never abbreviate, summarize, or write "unchanged"; the platform renders exactly these bytes and nothing else.`;
 
 /**
  * @typedef {Object} CvEnvelope
@@ -90,6 +90,29 @@ export function parseCvEnvelope(text) {
 
   const openers = [...normalized.matchAll(OPENER)];
   if (openers.length === 0) {
+    // Some headless CLIs occasionally omit the opening marker after emitting a
+    // long HTML response, while preserving the closing marker. Recover only
+    // when the output is otherwise an unambiguous complete document: exactly
+    // one closer, a document doctype before it, and a closing </html> tag. Any
+    // preamble is discarded because it cannot be part of the HTML document.
+    // This keeps malformed or injected output fail-closed while allowing the
+    // renderer to use a valid CV.
+    const closers = [...normalized.matchAll(CLOSER_ALL)];
+    const document = /<!doctype\s+html\s*>/i.exec(normalized);
+    const documentStart = document?.index ?? -1;
+    if (closers.length === 1 && documentStart !== -1) {
+      const closerIndex = closers[0].index;
+      const prefix = normalized.slice(0, documentStart);
+      const html = normalized.slice(documentStart, closerIndex).trim();
+      if (documentStart < closerIndex && !prefix.includes("<<cv-html") && /<\/html\s*>/i.test(html)) {
+        return {
+          ok: true,
+          html,
+          format: DEFAULT_PAGE_FORMAT,
+          warnings: [`The agent omitted the opening marker; defaulting to ${DEFAULT_PAGE_FORMAT}.`],
+        };
+      }
+    }
     return { ok: false, error: "The agent emitted no <<cv-html>> envelope, so there is no CV to render." };
   }
   if (openers.length > 1) {

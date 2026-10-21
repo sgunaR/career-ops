@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, BarChart3, BriefcaseBusiness, CircleDollarSign, MapPin, Sparkles, Target } from "lucide-react";
+import { ArrowUpRight, BarChart3, BriefcaseBusiness, CalendarDays, CircleDollarSign, MapPin, Sparkles, Target } from "lucide-react";
 import { PageFrame } from "@/components/page-frame";
 
 type ProgressMetrics = {
@@ -30,7 +30,7 @@ const BAR_TONES = ["bg-brand", "bg-sky-400", "bg-emerald-400", "bg-yellow-300", 
 
 export function AnalyticsShell({ total, view, children }: {
   total: number;
-  view: "progress" | "search-stats" | "insights";
+  view: "progress" | "search-stats" | "insights" | "calendar";
   children: React.ReactNode;
 }) {
   return (
@@ -58,6 +58,9 @@ export function AnalyticsShell({ total, view, children }: {
         </AnalyticsTab>
         <AnalyticsTab href="/analytics?view=search-stats" active={view === "search-stats"} icon={<Target className="size-3.5" />}>
           Search stats
+        </AnalyticsTab>
+        <AnalyticsTab href="/analytics?view=calendar" active={view === "calendar"} icon={<CalendarDays className="size-3.5" />}>
+          Posting calendar
         </AnalyticsTab>
       </nav>
 

@@ -1,4 +1,6 @@
-import { pipelineSummary, readApplicationStatusLog, readStatusLog } from "@/lib/career-ops";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { careerOpsRoot, pipelineSummary, readApplicationStatusLog, readStatusLog } from "@/lib/career-ops";
 import { PipelineSankey } from "@/components/analytics/pipeline-sankey";
 import { canonStatus } from "@/lib/format";
 import { cumulativeProgressWithHistory } from "@/lib/funnel-tiles.mjs";
@@ -7,6 +9,8 @@ import { computeProgressMetrics, computeStatsMetrics, generateInsights, resolveA
 import { AnalyticsShell, ProgressPanel, StatsPanel } from "@/components/analytics-view";
 import { FunnelRates } from "@/components/analytics/funnel-rates";
 import { SearchInsights } from "@/components/analytics/search-insights";
+import { PostingCalendar } from "@/components/analytics/posting-calendar";
+import { analyzePostings, parseScanHistory } from "@/lib/posting-season.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +22,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   const view = resolveAnalyticsView(params.view);
   return (
     <AnalyticsShell total={applications.length} view={view}>
-      {view === "insights" ? <SearchInsights /> : view === "search-stats" ? <SearchStatsView applications={applications} /> : <ProgressView applications={applications} />}
+      {view === "insights" ? <SearchInsights /> : view === "calendar" ? <CalendarView params={params} /> : view === "search-stats" ? <SearchStatsView applications={applications} /> : <ProgressView applications={applications} />}
     </AnalyticsShell>
   );
 }
@@ -35,6 +39,16 @@ async function ProgressView({ applications }: { applications: ReturnType<typeof 
       <FunnelRates />
     </>
   );
+}
+
+function one(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] || "" : value || "";
+}
+
+function CalendarView({ params }: { params: Record<string, string | string[] | undefined> }) {
+  const text = readFileSync(join(careerOpsRoot(), "data/scan-history.tsv"), "utf8");
+  const report = analyzePostings(parseScanHistory(text), { board: one(params.board), role: one(params.role) });
+  return <PostingCalendar report={report} />;
 }
 
 function SearchStatsView({ applications }: { applications: ReturnType<typeof pipelineSummary>["applications"] }) {

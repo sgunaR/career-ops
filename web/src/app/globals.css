@@ -323,3 +323,26 @@ html.dark .co-cost[data-tone="free"]{color:hsl(158 64% 60%);background:hsl(158 6
 .co-cost[data-tone="spend"]{color:hsl(35 9% 34%);background:hsl(35 8% 46% / .12);border-color:hsl(35 8% 46% / .26)}
 html.dark .co-cost[data-tone="spend"]{color:hsl(35 8% 70%);background:hsl(35 6% 60% / .12);border-color:hsl(35 6% 60% / .24)}
 .co-cost svg{width:.85em;height:.85em}
+
+/* Telemetry chart series — dataviz reference palette, categorical slots 1–7 in
+   fixed order. Validated (scripts/validate_palette.js) against the chart
+   surfaces: light #ffffff, dark #161616. Light slots 3–5 sit under 3:1 on the
+   surface, so every telemetry chart ships a legend with values + a table view. */
+:root {
+  --viz-input: #2a78d6;
+  --viz-output: #eb6834;
+  --viz-cache-read: #1baf7a;
+  --viz-cache-write: #eda100;
+  --viz-web: #e87ba4;
+  --viz-premium: #008300;
+  --viz-reported: #4a3aa7;
+}
+html.dark {
+  --viz-input: #3987e5;
+  --viz-output: #d95926;
+  --viz-cache-read: #199e70;
+  --viz-cache-write: #c98500;
+  --viz-web: #d55181;
+  --viz-premium: #008300;
+  --viz-reported: #9085e9;
+}

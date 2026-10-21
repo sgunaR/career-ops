@@ -1,0 +1,1201 @@
+# Portal Scanner Configuration
+# Used by /career-ops scan to discover new offers automatically.
+#
+# Strategy (4 levels):
+#   0. Local parser → per-company `parser:` script for SSR/static career pages (zero-token)
+#   1. Playwright → careers_url of each company (real-time, reliable)
+#   2. HTTP JSON (WebFetch) → per-company `api:` on tracked_companies (see board_api_catalog below)
+#   3. WebSearch with site: filters (broad discovery, may be stale)
+#
+# IMPORTANT: Each company in tracked_companies MUST have careers_url.
+#   Prefer the BRANDED company careers URL whenever available; use ATS-hosted URL only as fallback.
+#   ✅ https://careers.mastercard.com   ⚠️ https://mastercard.wd1.myworkdayjobs.com (fallback only)
+#   ✅ https://openai.com/careers       ⚠️ https://job-boards.greenhouse.io/openai (fallback only)
+#   Exception: ATS-hosted careers_url is acceptable when no branded careers page exists.
+#   Using raw ATS URLs when a branded page exists can cause false 410 errors (job ID mismatch).
+#
+# HOW TO CUSTOMIZE:
+#   1. Copy this file to portals.yml in the project root
+#   2. Edit title_filter.positive with YOUR target role keywords
+#   3. Add/remove companies in tracked_companies
+#   4. Adjust search_queries for your preferred job boards
+#   5. Set enabled: false on companies you don't care about
+
+# -- Scan history recheck policy (optional) --
+# By default, URLs recorded in data/scan-history.tsv are deduped forever.
+# Set recheck_after_days to let previously added URLs become eligible again
+# after N days, useful for roles that reopen or are republished at the same URL.
+# Permanent invalid statuses such as blocked host or malformed URL still remain
+# deduped forever.
+#
+# scan_history:
+#   recheck_after_days: 30
+
+# -- Location filter (optional) --
+# Filter scanned jobs by location. Applied AFTER title filter, BEFORE dedup.
+# If this entire block is absent, all locations pass (current default behavior).
+#
+# Semantics (case-insensitive substring, in this order):
+#   - Empty location string on a job → pass (don't penalize missing data)
+#   - Any `always_allow` keyword present → pass (takes precedence over `block`)
+#   - Any `block` keyword present → reject
+#   - `allow` empty → pass (already cleared block)
+#   - `allow` non-empty → must match at least one keyword
+#
+# `always_allow` is optional. It rescues multi-location postings that name your
+# home region: with always_allow ["New York"] and block ["India"], a job listed
+# "Remote, New York or India" passes (New York wins), while "Remote, India" is
+# still rejected. Omit always_allow entirely and the filter behaves as before.
+#
+# Example below targets US-based remote + a couple of US metros, blocking
+# common foreign hubs. Customize to your geography.
+
+location_filter:
+  # Target India-based roles plus genuinely remote roles. Missing location still passes.
+  allow:
+    - "Remote"
+    - "Anywhere"
+    - "Worldwide"
+    - "India"
+    - "Hyderabad"
+    - "Bangalore"
+    - "Bengaluru"
+    - "Pune"
+    - "Chennai"
+    - "Gurgaon"
+    - "Gurugram"
+    - "Noida"
+    - "Delhi"
+    - "Mumbai"
+  # A "remote" job can still be closed to India ("United States | Remote", "Remote (EU)").
+  # 2026-09-26 audit: 92% of Top Startups and 100% of JustRemote matches were US-only.
+  # Order of precedence: block_hard > always_allow > block > allow. always_allow lets
+  # "US or India" / "Anywhere in the World" through; a bare "Remote" still passes via allow.
+  always_allow:
+    - "India"
+    - "Worldwide"
+    - "Anywhere"
+    - "Global"
+    - "Asia"
+    - "APAC"
+  block:
+    - "United States"
+    - "USA"
+    - "US"
+    - "U.S."
+    - "Canada"
+    - "United Kingdom"
+    - "UK"
+    - "Europe"
+    - "EMEA"
+    - "EU"
+    - "North America"
+    - "Americas"
+    - "LATAM"
+    - "Latin America"
+    - "Australia"
+    - "Germany"
+    - "France"
+    - "Spain"
+    - "Poland"
+    - "Netherlands"
+    - "Brazil"
+    - "Mexico"
+
+# -- Salary filter (optional) --
+# Filter scanned jobs by annual compensation range. Applied AFTER location
+# filter, BEFORE dedup. Only applies when structured salary data exists.
+#
+# Semantics:
+#   - min/max are annual compensation filters (use annualized values)
+#   - max: 0 means "no upper limit"
+#   - If no salary data exists on a job, it passes (conservative behavior)
+#   - If both currencies are known and differ, the job is rejected by the salary filter
+#   - Partial ranges (min only or max only) work correctly
+#   - If this entire block is absent, salary is not filtered (default behavior)
+#
+# Example: target roles paying at least $100k, no upper limit
+# salary_filter:
+#   min: 100000
+#   max: 0
+#   currency: "USD"
+
+# -- Posting-age filter (optional) --
+# Opt-in freshness gate. Skips offers whose posting date (postedAt, supplied by
+# the provider) is older than the window below. Offers from providers that
+# expose no date are never skipped — same "don't penalize missing data" rule as
+# location_filter. Absent, 0, or non-positive → disabled (all ages pass).
+#
+# max_posting_age_hours is the HARD cutoff: nothing older survives, in either
+# the outside-India scan (scan.mjs) or the India scanner (local/india-scan).
+# It takes precedence over max_posting_age_days below when set.
+# 24h matches the board-native freshness filters India scrapers request
+# (Naukri jobAge=1, LinkedIn f_TPR=r86400, Indeed fromage=1, …).
+max_posting_age_hours: 24
+# priority_posting_age_hours is NOT a cutoff — postings within it just sort
+# first (freshest at the top of data/pipeline.md / the India pipeline).
+# Kept equal to the hard cutoff so every kept row is already "priority".
+priority_posting_age_hours: 24
+# Legacy day-based form, kept for anything that hasn't moved to hours yet.
+# Ignored while max_posting_age_hours is set.
+max_posting_age_days: 45
+
+# -- Trust filter (optional) --
+# Enriches each scanned job with a trust score (0-100) and flags.
+# Jobs are NEVER dropped — only annotated. The trust score helps you
+# prioritize which postings to evaluate first.
+#
+# Heuristics (V1):
+#   1. URL structure validation (malformed or non-http URLs)
+#   2. Missing application URL
+#   3. Suspicious domain detection (link shorteners, form builders)
+#   4. Company ↔ domain mismatch (with ATS allowlist)
+#
+# If this block is absent or enabled: false, all jobs get score 100.
+#
+# trust_filter:
+#   enabled: true
+#   suspicious_domains:
+#     - "bit.ly"
+#     - "tinyurl.com"
+#     - "t.co"
+#     - "forms.gle"
+#     - "goo.gl"
+#     - "shorturl.at"
+#   # Override the built-in ATS allowlist (greenhouse, lever, workday, etc.).
+#   # URLs hosted on these domains skip the company↔domain mismatch check.
+#   # ats_allowlist:
+#   #   - "greenhouse.io"
+#   #   - "ashbyhq.com"
+#   #   - "lever.co"
+#   #   - "custom-ats.example.com"
+
+# -- Content filter (optional) --
+# Filters on the job DESCRIPTION text, not just the title — useful when
+# companies post generic titles ("Software Engineer") with very different
+# stacks. Case-insensitive substring match.
+# Semantics:
+#   - A job with no description always passes (see provider support below)
+#   - Any `negative` keyword present → reject
+#   - `positive` empty → pass (after clearing negatives)
+#   - `positive` non-empty → at least one keyword must be present
+#   - If this entire block is absent, descriptions are not filtered (default)
+#
+# Provider support: the scanner is zero-token and only reads descriptions that
+# a provider already returns in its list payload — it never fetches each job
+# page. Currently Lever (`descriptionPlain`) supplies descriptions; jobs from
+# providers that don't always pass this filter (they're never silently dropped).
+#
+# Example: keep roles that mention Rust/Go, drop legacy PHP/WordPress shops
+# content_filter:
+#   positive:
+#     - "rust"
+#     - "golang"
+#   negative:
+#     - "php"
+#     - "wordpress"
+#
+# by_title_keyword (optional): scope a stricter positive/negative pair to only
+# the jobs matched via a specific title_filter.positive keyword, instead of
+# applying it to every scanned job. Useful when a title keyword is broad
+# enough to need extra confirmation from the description (e.g. "AI Engineer"
+# roles where you want the JD to actually mention a concrete AI tool) without
+# that same requirement leaking onto unrelated categories (Instructional
+# Designer, HR Coordinator, ...). Jobs matched via a keyword with no entry
+# here fall back to the global positive/negative pair above.
+# content_filter:
+#   by_title_keyword:
+#     "AI Engineer":
+#       positive:
+#         - "gpt"
+#         - "llm"
+#         - "claude"
+
+# -- Title filter --
+# The scanner uses these keywords to decide if a title is relevant.
+# At least 1 positive must match AND 0 negatives must match (case-insensitive).
+#
+# skip_tiers: [intern, entry]  # optional: skip listings by seniority tier (note: unrecognized/plain titles fall back to 'mid')
+
+title_filter:
+  positive:
+    # Target titles: Full Stack · Backend · AI · SAP BTP Developer/Consultant · SAP CPI Consultant
+    - "Full Stack"
+    - "Full-Stack"
+    - "Fullstack"
+    - "Backend"
+    - "Back-End"
+    - "Software Engineer"
+    - "Software Developer"
+    - "AI Engineer"
+    - "AI Developer"
+    - "LLM"
+    - "GenAI"
+    - "Generative AI"
+    - "Machine Learning Engineer"
+    - "MCP"
+    - "SAP BTP"
+    - "SAP CPI"
+    - "Integration Suite"
+    - "SAP Integration"
+    - "BTP Consultant"
+    - "BTP Developer"
+    - "CPI Consultant"
+    - "CPI Developer"
+    - "SAP BTP Consultant"
+    - "SAP BTP Developer"
+    - "SAP CPI Consultant"
+  negative:
+    # [CUSTOMIZE] Add keywords for roles you want to exclude
+    - "Junior"
+    - "Intern"
+    - "Entry Level"
+    - "Fresher"
+    - ".NET"
+    - "Dot Net"
+    - "DotNet"
+    - "Java "
+    - "C++"
+    - "iOS"
+    - "Android"
+    - "PHP"
+    - "Ruby"
+    - "Magento"
+    - "Frontend"
+    - "Front-End"
+    - "Front End"
+    - "Web Developer"
+    - "Web Engineer"
+    - "Design Systems"
+    - "Customer Success"
+    - "Customer Service"
+    - "Trainer"
+    - "Coach"
+    - "Instructor"
+    - "Video Editor"
+    - "Operations Manager"
+    - "Embedded"
+    - "Firmware"
+    - "FPGA"
+    - "ASIC"
+    - "Blockchain"
+    - "Web3"
+    - "Crypto"
+    - "Salesforce Admin"
+    - "Product Manager"
+    - "DevRel"
+    - "Developer Advocate"
+    - "Architect"
+    - "Manager"
+    - "Director"
+    - "Principal"
+    - "Head"
+    - "Vice President"
+    - "VP"
+    - "Chief"
+    - "Staff"
+    - "Team Lead"
+    - "Lead "
+    - "Voice AI"
+    - "Oracle EBS"
+    - "Mainframe"
+    - "COBOL"
+    - "ABAP"
+    # SAP tracks outside BTP/CPI
+    - "SAP MM"
+    - "SAP FI"
+    - "SAP SD"
+    - "SAP PP"
+    - "SAP WM"
+    - "SAP Basis"
+    - "SuccessFactors"
+    - "Fiori"
+  seniority_boost:
+    # These prefixes add relevance but are not required
+    - "Senior"
+    - "Full Stack"
+    - "Backend"
+    - "AI"
+    - "SAP BTP"
+    - "SAP CPI"
+
+# -- Search queries --
+# Each query triggers a WebSearch. Use site: to filter by portal.
+# The scanner extracts title, URL, and company from results.
+
+search_queries:
+  # Default template queries below are mostly disabled.
+  # Enabled set: Backend / AI Engineer ATS discovery + India (Naukri/Instahyre/Cutshort).
+
+  # -- Ashby --
+  - name: Ashby — AI PM
+    query: 'site:jobs.ashbyhq.com "AI Product Manager" OR "Senior Product Manager AI" remote'
+    enabled: false
+
+  - name: Ashby — Solutions Architect
+    query: 'site:jobs.ashbyhq.com "Solutions Architect" AI OR automation remote'
+    enabled: false
+
+  - name: Ashby — Backend Engineer
+    query: 'site:jobs.ashbyhq.com "Backend Engineer" OR "Backend Developer" OR "Software Engineer" Node.js OR Python OR FastAPI remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: Ashby — AI Engineer
+    query: 'site:jobs.ashbyhq.com "AI Engineer" OR "Applied AI" OR "LLM Engineer" OR MCP remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: Ashby — Agentic
+    query: 'site:jobs.ashbyhq.com "Agentic" OR "AI Agent" OR "Automation Architect" remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  # -- Greenhouse --
+  - name: Greenhouse — AI PM
+    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "AI Product Manager" OR "Senior Product Manager" AI remote'
+    enabled: false
+
+  - name: Greenhouse — SA & FDE
+    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "Solutions Architect" OR "Forward Deployed" AI remote'
+    enabled: false
+
+  - name: Greenhouse — Backend Engineer
+    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "Backend Engineer" OR "Backend Developer" OR "Software Engineer" Python OR Node.js remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: Greenhouse — AI Engineer
+    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "AI Engineer" OR "Applied AI" OR "LLM" OR "Agentic" remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: Greenhouse — SAP / Integration
+    query: 'site:boards.greenhouse.io OR site:job-boards.greenhouse.io "SAP BTP" OR "SAP CPI" OR "Integration Suite" OR "SAP Integration"'
+    enabled: true
+
+  # -- Lever --
+  - name: Lever — Backend / AI
+    query: 'site:jobs.lever.co "Backend Engineer" OR "Software Engineer" OR "AI Engineer" OR FastAPI OR Node.js remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  # -- Workable --
+  - name: Workable — AI Roles
+    query: 'site:apply.workable.com "AI" "Product Manager" OR "Solutions Architect" OR "AI Engineer" remote'
+    enabled: false
+
+  - name: Workable — Backend / AI Engineer
+    query: 'site:apply.workable.com "Backend Engineer" OR "Software Engineer" OR "AI Engineer" Python OR Node.js remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  # -- No-Code / Low-Code / Automation --
+  - name: Ashby — No-Code & Automation
+    query: 'site:jobs.ashbyhq.com "no-code" OR "low-code" OR "automation engineer" OR "n8n" OR "Make" OR "Airtable" remote senior'
+    enabled: false
+
+  - name: Greenhouse — No-Code & Automation
+    query: 'site:job-boards.greenhouse.io "no-code" OR "low-code" OR "automation engineer" OR "business systems" senior remote'
+    enabled: false
+
+  - name: GTM Engineer — All portals
+    query: '"GTM Engineer" OR "RevOps Engineer" OR "Growth Engineer" automation Airtable OR Make OR Clay remote'
+    enabled: false
+
+  # -- Voice AI & Conversational AI --
+  - name: Voice AI — FDE & SA
+    query: 'site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com "Voice AI" OR "Conversational AI" OR "Speech" "Solutions" OR "Forward Deployed" OR "Customer Engineer"'
+    enabled: false
+
+  - name: Voice AI — AI Engineer
+    query: 'site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com "Voice" OR "Speech" "AI Engineer" OR "Deployment" OR "Integration"'
+    enabled: false
+
+  # -- Contact Center AI --
+  - name: Contact Center AI — SA & SE
+    query: '"contact center" OR "customer service" "AI" "Solutions Architect" OR "Solutions Engineer" OR "Forward Deployed" remote'
+    enabled: false
+
+  # -- FDE specific (cross-portal) --
+  - name: FDE & Deployed Engineer — All portals
+    query: '"Forward Deployed Engineer" OR "Deployed Engineer" OR "Deployment Engineer" AI site:job-boards.greenhouse.io OR site:jobs.ashbyhq.com OR site:jobs.lever.co'
+    enabled: false
+
+  # -- Remote-friendly boards (trimmed) --
+
+  - name: Remotive — AI/DevRel/SA/FDE
+    query: 'site:remotive.com "AI Engineer" OR "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed" OR "DevRel" Europe'
+    enabled: false
+
+  - name: Remotive — Backend / AI
+    query: 'site:remotive.com "Backend" OR "Software Engineer" OR "AI Engineer" Python OR Node.js'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: WeWorkRemotely — AI & DX
+    query: 'site:weworkremotely.com "AI" OR "DevRel" OR "Solutions Engineer" OR "Forward Deployed" OR "Founding Engineer"'
+    enabled: false
+
+  - name: Working Nomads — AI/DevRel/SA
+    query: 'site:workingnomads.com "AI Engineer" OR "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed"'
+    enabled: false
+
+  - name: EU Remote Jobs — AI/DevRel/SA
+    query: 'site:euremotejobs.com "AI" OR "DevRel" OR "Solutions Architect" OR "Forward Deployed" OR "Founding Engineer"'
+    enabled: false
+
+  - name: RemoteOK — AI/DevRel/SA
+    query: 'site:remoteok.com "AI Engineer" OR "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed" OR "Founding Engineer"'
+    enabled: false
+
+  - name: RemoteOK — Backend / AI
+    query: 'site:remoteok.com "Backend" OR "Software Engineer" OR "AI Engineer" Python OR Node.js'
+    enabled: false  # disabled — not India/SAP board query
+
+  # -- Specialized AI boards --
+
+  - name: ai-jobs.net — DevRel/SA/FDE
+    query: 'site:ai-jobs.net "Developer Advocate" OR "Solutions Architect" OR "Forward Deployed" OR "DevRel" remote Europe'
+    enabled: false
+
+  - name: ai-jobs.net — Founding/Applied AI
+    query: 'site:ai-jobs.net "Founding Engineer" OR "Applied AI Engineer" OR "AI Engineer" remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: fwddeploy.com — Forward Deployed roles
+    query: 'site:fwddeploy.com "Forward Deployed" OR "Deployed Engineer" remote Europe OR EMEA'
+    enabled: false
+
+  - name: YC Jobs — DevRel/SA/FDE/Founding
+    query: 'site:ycombinator.com/jobs OR site:workatastartup.com "Forward Deployed" OR "Developer Advocate" OR "Founding Engineer" OR "Solutions Architect" remote'
+    enabled: false
+
+  - name: YC Jobs — Applied AI
+    query: 'site:workatastartup.com "Applied AI" OR "AI Engineer" OR "Backend Engineer" remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  # -- Spanish market (disabled — not targeting) --
+
+  - name: Manfred — Tech Senior España
+    query: 'site:getmanfred.com/en/job-offers "Solutions Architect" OR "DevRel" OR "Forward Deployed" OR "AI Engineer" OR "Founding"'
+    enabled: false
+
+  - name: Manfred — Remote AI/Senior
+    query: 'site:getmanfred.com "remote" "AI" OR "Senior" OR "Staff" OR "Lead"'
+    enabled: false
+
+  - name: Tecnoempleo — España IT
+    query: 'site:tecnoempleo.com "AI Engineer" OR "Solutions Architect" OR "DevRel" OR "Forward Deployed" OR "Founding Engineer"'
+    enabled: false
+
+  - name: Tecnoempleo — Remoto Senior
+    query: 'site:tecnoempleo.com "remoto" OR "remote" Senior "AI" OR "Architect" OR "Lead"'
+    enabled: false
+
+  - name: JobFluent — Spain startups
+    query: 'site:jobfluent.com Madrid OR Barcelona "AI" OR "Engineer" OR "Solutions" OR "DevRel"'
+    enabled: false
+
+  - name: Welcome to the Jungle — Spain tech
+    query: 'site:welcometothejungle.com Spain OR Madrid OR Barcelona "AI Engineer" OR "Solutions Architect" OR "DevRel" OR "Forward Deployed"'
+    enabled: false
+
+  # -- DevRel-specific boards --
+
+  - name: DevRelX Jobs
+    query: 'site:devrelx.com/jobs remote OR Europe OR EMEA'
+    enabled: false
+
+  - name: TrueUp — DevRel roles
+    query: 'site:trueup.io/devrel OR site:trueup.io "Developer Advocate" OR "DevRel" remote Europe'
+    enabled: false
+
+  - name: Remote Rocketship — DevRel
+    query: 'site:remoterocketship.com/jobs/developer-relations OR site:remoterocketship.com "DevRel" remote'
+    enabled: false
+
+  - name: DevRel Job board
+    query: 'site:devreljob.com remote OR Europe OR EMEA'
+    enabled: false
+
+  # -- European / global aggregators --
+
+  - name: Himalayas — Remote AI/Dev-tools
+    query: 'site:himalayas.app "AI Engineer" OR "Solutions Architect" OR "Developer Advocate" OR "Forward Deployed" OR "Founding Engineer" Europe'
+    enabled: false
+
+  - name: Himalayas — Backend / AI
+    query: 'site:himalayas.app "Backend Engineer" OR "Software Engineer" OR "AI Engineer" remote'
+    enabled: false  # disabled — not India/SAP board query
+
+  - name: Jooble — España Tech Senior
+    query: 'site:jooble.org "AI Engineer" OR "Solutions Architect" OR "DevRel" Madrid OR remote España'
+    enabled: false
+
+  - name: EU Data Jobs — AI/ML Europe
+    query: 'site:eudatajobs.com "AI" OR "ML" OR "Data" "Engineer" OR "Architect" remote Europe'
+    enabled: false
+
+  - name: HN Who's Hiring — Remote AI
+    query: 'site:news.ycombinator.com OR site:hnrss.org "AI Engineer" OR "Forward Deployed" OR "DevRel" OR "Founding Engineer" remote'
+    enabled: false
+
+  # -- Türkiye / Turkey job portals --
+  - name: Kariyer.net — Backend / Software Engineer
+    query: 'site:kariyer.net "Backend Developer" OR "Software Engineer" OR "Yazılım Geliştirici" OR "Backend Geliştirici" Ankara OR Istanbul OR uzaktan'
+    enabled: false
+
+  - name: Kariyer.net — Frontend Engineer
+    query: 'site:kariyer.net "Frontend Developer" OR "React Developer" OR "Frontend Geliştirici" Ankara OR Istanbul OR uzaktan'
+    enabled: false
+
+  - name: Yenibiris.com — Software Engineer
+    query: 'site:yenibiris.com "Software Engineer" OR "Backend Developer" OR "Frontend Developer" OR "Yazılım Geliştirici"'
+    enabled: false
+
+  - name: Secretcv.com — Tech Roles
+    query: 'site:secretcv.com "Software Engineer" OR "Backend" OR "Frontend" OR "Full Stack"'
+    enabled: false
+
+  - name: İşin Olsun — Startup / Tech
+    query: 'site:isinolsun.com "Yazılım" OR "Software" OR "Backend" OR "Frontend" OR "Full Stack"'
+    enabled: false
+
+  - name: LinkedIn — Turkey Tech Roles
+    query: 'site:linkedin.com/jobs "Software Engineer" OR "Backend Engineer" OR "Frontend Engineer" Turkey OR Türkiye OR Ankara OR Istanbul'
+    enabled: false
+
+  # -- India boards (Phase 3 — Level 3 WebSearch only; no public ATS APIs) --
+  # Naukri / Instahyre / Cutshort / Hirist / Apna / foundit block scrapers (login,
+  # Cloudflare). These queries feed agent scan (`/career-ops scan`), NOT `npm run scan`.
+  # Always Playwright-verify liveness before evaluating.
+
+  - name: Naukri — Backend Engineer Mid
+    query: 'site:naukri.com "Backend Engineer" OR "Backend Developer" OR "Software Engineer" (Python OR "Node.js" OR FastAPI) (Hyderabad OR Bangalore OR Bengaluru OR Pune OR "Work from home" OR Remote) -Intern -Fresher'
+    enabled: true
+
+  - name: Naukri — AI Engineer / GenAI
+    query: 'site:naukri.com ("AI Engineer" OR "Applied AI" OR "GenAI" OR "LLM Engineer" OR LangGraph OR CrewAI OR MCP) (Hyderabad OR Bangalore OR Bengaluru OR Pune OR Remote) -Intern -Fresher'
+    enabled: true
+
+  - name: Naukri — SAP BTP / CPI
+    query: 'site:naukri.com ("SAP BTP" OR "SAP CPI" OR "Integration Suite" OR "SAP Integration Suite" OR "CPI Consultant" OR "BTP Developer") (Hyderabad OR Bangalore OR Bengaluru OR Pune OR Remote)'
+    enabled: true
+
+  - name: Naukri — SAP Consultant / Developer
+    query: 'site:naukri.com ("SAP Consultant" OR "SAP Developer" OR "SAP Integration") (Hyderabad OR Bangalore OR Bengaluru) -ABAP -FICO -MM -SD -Basis'
+    enabled: true
+
+  - name: Instahyre — Backend / AI / SAP
+    query: 'site:instahyre.com ("Backend Engineer" OR "Software Engineer" OR "AI Engineer" OR "SAP BTP" OR "SAP CPI") (Hyderabad OR Bangalore OR Bengaluru OR Remote)'
+    enabled: true
+
+  - name: Cutshort — Backend / AI / SAP
+    query: 'site:cutshort.io ("Backend" OR "Software Engineer" OR "AI Engineer" OR "SAP BTP" OR CPI) (Hyderabad OR Bangalore OR Bengaluru OR Remote)'
+    enabled: true
+
+  - name: Hirist — Backend / AI / SAP
+    query: 'site:hirist.tech ("Backend Engineer" OR "Software Engineer" OR "AI Engineer" OR "SAP BTP" OR "SAP CPI") (Hyderabad OR Bangalore OR Bengaluru OR Remote)'
+    enabled: true
+
+  - name: Indeed India — Backend / AI / SAP
+    query: 'site:in.indeed.com ("Backend Engineer" OR "Software Engineer" OR "AI Engineer" OR "SAP BTP" OR "SAP CPI") (Hyderabad OR Bangalore OR Bengaluru OR Pune OR Remote)'
+    enabled: true
+
+  - name: Apna — Backend / AI / SAP
+    query: 'site:apna.co ("Backend Engineer" OR "Software Engineer" OR "AI Engineer" OR "SAP BTP" OR "SAP CPI") (Hyderabad OR Bangalore OR Remote)'
+    enabled: true
+
+  - name: foundit — Backend / AI / SAP
+    query: 'site:foundit.in ("Backend Engineer" OR "Software Engineer" OR "AI Engineer" OR "SAP BTP" OR "SAP CPI") (Hyderabad OR Bangalore OR Bengaluru OR Remote)'
+    enabled: true
+
+  - name: LinkedIn India — Backend Engineer
+    query: 'site:linkedin.com/jobs ("Backend Engineer" OR "Software Engineer") (Python OR "Node.js") (Hyderabad OR Bangalore OR Bengaluru OR "Remote") India'
+    enabled: true
+
+  - name: LinkedIn India — AI / SAP
+    query: 'site:linkedin.com/jobs ("AI Engineer" OR "SAP BTP" OR "SAP CPI" OR "Integration Suite") (Hyderabad OR Bangalore OR Bengaluru OR Remote) India'
+    enabled: true
+
+  # Peerlist / Wellfound — no public HTTP feed (Cloudflare / DataDome). Agent WebSearch backup.
+  - name: Peerlist — Full Stack / Backend / AI
+    query: 'site:peerlist.io/jobs ("Full Stack" OR Backend OR "Software Engineer" OR "AI Engineer" OR "SAP BTP") (Remote OR India OR Hyderabad OR Bangalore)'
+    enabled: true
+
+  - name: Wellfound — Full Stack / Backend / AI
+    query: 'site:wellfound.com/jobs ("Full Stack" OR Backend OR "Software Engineer" OR "AI Engineer") remote'
+    enabled: true
+
+# -- Tracked companies --
+# Companies whose career pages are checked directly.
+# scan_method: playwright (default), websearch, local_parser
+# For Greenhouse companies, add api: field for faster structured JSON access.
+#
+# Provider routing (scan.mjs):
+#   By default each entry is auto-detected from `careers_url` against the
+#   loaded providers in providers/*.mjs (local-parser, ashby, greenhouse, lever).
+#   local-parser runs first when parser.command + parser.script are set.
+#
+#   Optional fields on a tracked_companies entry:
+#     provider: <id>     — force a specific provider, skipping detect().
+#     transport: http    — reserved for future transports. Defaults to http.
+#
+# For SSR/static career pages, add parser.command + parser.script. The command
+# can be python3, node, or another local executable. The script must print JSON
+# jobs to stdout: [{ "title": "...", "url": "...", "location": "..." }]
+#
+# Generic local parser examples. Most parser scripts are company-specific and
+# already know their target careers URL. `args` are optional and can help the
+# parser author (reuse across companies, debug flags, JSON snapshots, etc.).
+#
+# JavaScript parser:
+# - name: Example JS Company
+#   careers_url: https://example.com/careers
+#   scan_method: local_parser
+#   parser:
+#     command: node
+#     script: scripts/parsers/example-js-company-jobs.js
+#     format: jobs-json-v1
+#   enabled: true
+#
+# Python parser:
+# - name: Example Python Company
+#   careers_url: https://example.org/jobs
+#   scan_method: local_parser
+#   parser:
+#     command: python3
+#     script: scripts/parsers/example_python_company_jobs.py
+#     format: jobs-json-v1
+#   enabled: true
+
+# ── Provider auto-detection ───────────────────────────────────────
+# scan.mjs auto-loads everything in providers/*.mjs and tries each
+# provider's detect() in order. URL patterns recognized:
+#
+#   greenhouse      job-boards(.eu)?.greenhouse.io/<slug>  (or api: field)
+#   ashby           jobs.ashbyhq.com/<slug>
+#   lever           jobs.(eu.)?lever.co/<slug>
+#   workable        apply.workable.com/<slug>
+#   smartrecruiters (careers|jobs).smartrecruiters.com/<slug>
+#   recruitee       <slug>.recruitee.com
+#   bamboohr        <tenant>.bamboohr.com               (or api: field)
+#   breezy          <tenant>.breezy.hr                  (or api: field)
+#   solidjobs       solid.jobs/public-api/offers/<division>
+#   comeet          api: https://www.comeet.co/careers-api/2.0/company/<uid>/positions?token=<token>
+#   personio        <slug>.jobs.personio.(de|com)
+#   pinpoint        <slug>.pinpointhq.com
+#   rippling        ats.rippling.com/<slug>/jobs
+#   jibeapply       <slug>.jibeapply.com/jobs  (or provider: jibeapply + api: for a branded host's own /jobs path)
+#   tencent         careers.tencent.com  (zh-CN board; each keywords: entry queried server-side, results deduped)
+#   meituan         zhaopin.meituan.com  (zh-CN board; each keywords: entry queried server-side, results deduped)
+#   workday         <tenant>.wd<N>.myworkdayjobs.com[/<locale>]/<board>
+#   avature         <tenant>.avature.net  (branded host → provider: avature + api: the /careers/SearchJobs URL)
+#   amazon          amazon.jobs           (global board; provider: amazon + an amazon: filter block, see below)
+#   successfactors  *.successfactors.(eu|com) / *.jobs2web.com  (SAP SF Recruiting Marketing / RMK boards;
+#                   branded hosts like jobs.<company>.com need provider: successfactors + api: <board origin>)
+#   oraclecloud     <tenant>.fa[.<region>][.ocs].oraclecloud.com/hcmUI/CandidateExperience/.../sites/<siteNumber>/jobs
+#                   (Oracle Recruiting Cloud / Fusion CX — JPMorgan, Oracle, BNY, Amex, Honeywell; siteNumber
+#                   auto-derived from the URL, override with provider: oraclecloud + siteNumber: / optional locationId:)
+#
+# When the public careers URL is a branded custom domain (e.g.
+# careers.adyen.com), set `provider: smartrecruiters` explicitly to
+# bypass detect(). The `provider:` field wins over auto-detection.
+#
+# Some providers are job boards / aggregators with no per-company careers
+# URL to detect, so they must be selected with an explicit `provider:`
+# field: 4dayweek, arbeitnow, arbeitsagentur, getonbrd, glints, himalayas, ibm, jobicy,
+# jobstreet, justjoin, justremote, landingjobs, nofluffjobs, remoteok, remoteco, remotive,
+# hubstaff-talent, thehub, weworkremotely, workingnomads. Examples for every built-in
+# provider are below.
+
+# ── Built-in provider examples ────────────────────────────────────
+# Commented config for each provider in providers/. Copy a stanza into
+# tracked_companies, uncomment, and adjust. Auto-detected providers only
+# need careers_url; the rest need provider: plus any fields shown.
+#
+# -- Auto-detected company ATS (careers_url is enough) --
+#
+# - name: Example BambooHR Co
+#   careers_url: https://exampleco.bamboohr.com/careers   # any *.bamboohr.com host
+#   enabled: true
+#
+# - name: Example Breezy Co
+#   careers_url: https://exampleco.breezy.hr              # any *.breezy.hr host
+#   enabled: true
+#
+# - name: Example Pinpoint Co
+#   careers_url: https://exampleco.pinpointhq.com         # any *.pinpointhq.com host
+#   enabled: true
+#
+# - name: Example Rippling Co
+#   careers_url: https://ats.rippling.com/exampleco/jobs  # any ats.rippling.com/<slug>
+#   enabled: true
+#
+# - name: Example JibeApply Co
+#   careers_url: https://exampleco.jibeapply.com/jobs     # any *.jibeapply.com/jobs host
+#   max_pages: 50          # optional page cap (10 jobs/page, default 50, max 500) —
+#                          # raise it for a tenant with 500+ open postings (a warning
+#                          # is logged if the cap truncates real results)
+#   enabled: true
+#
+# - name: 腾讯 (Tencent)
+#   careers_url: https://careers.tencent.com/search.html  # any https://careers.tencent.com URL
+#   keywords: ["AI", "大模型"]   # each keyword is a separate server-side query, results deduped;
+#                                # omit keywords to pull the whole board
+#   max_pages: 20          # optional per-keyword page cap (100 posts/page, default 20)
+#   enabled: true
+#
+# - name: 美团 (Meituan)
+#   careers_url: https://zhaopin.meituan.com/web/social   # any https://zhaopin.meituan.com URL
+#   keywords: ["AI", "大模型"]   # each keyword is a separate server-side query, results deduped;
+#                                # omit keywords to pull the whole board
+#   max_pages: 30          # optional per-keyword page cap (100 posts/page, default 30)
+#   enabled: true
+#
+# - name: Example Workday Co
+#   careers_url: https://exampleco.wd5.myworkdayjobs.com/en-US/exampleco-careers  # any <tenant>.wd<N>.myworkdayjobs.com
+#   max_pages: 100         # optional page cap (20 jobs/page, default 100, max 1500) —
+#                          # raise it for a tenant with 2000+ open postings (a warning
+#                          # is logged if the cap truncates real results)
+#   enabled: true
+#
+# - name: Example Oracle Recruiting Cloud Co
+#   # Oracle Recruiting Cloud / Fusion Candidate Experience. Auto-detects any
+#   # <tenant>.fa[.<region>][.ocs].oraclecloud.com host and derives siteNumber
+#   # from the /sites/<siteNumber>/ path segment (default CX_1).
+#   careers_url: https://exampleco.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1/jobs
+#   max_pages: 25          # optional page cap (200 jobs/page, default 25 ≈ 5000 jobs, max 25)
+#   enabled: true
+#
+# - name: JPMorgan Chase                    # worked override example
+#   # Override form: pin the host + siteNumber explicitly (useful when the public
+#   # careers link is branded or the /sites/<n>/ segment isn't in the URL you have).
+#   careers_url: https://jpmc.fa.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1002/jobs
+#   provider: oraclecloud
+#   siteNumber: CX_1002    # the site number after /sites/ (JPMC's external site)
+#   # locationId: 300000000123456   # optional — some tenants (BNY, Amex) need it to scope results
+#   max_pages: 25
+#   enabled: true
+#
+# - name: Example Avature Co
+#   # Avature career site. Auto-detects any *.avature.net host; for a branded
+#   # host that proxies Avature, set provider: avature + api: the SearchJobs URL.
+#   careers_url: https://exampleco.avature.net/careers/SearchJobs
+#   max_pages: 50          # optional page cap (only 6 jobs/page — Avature's hard
+#                          # limit — so ~300 postings by default, max 200 pages)
+#   enabled: true
+#
+# - name: Example SuccessFactors Co
+#   # SAP SuccessFactors Recruiting Marketing (RMK, ex-jobs2web) branded board —
+#   # what many large industrials run at their own domain (jobs.<company>.com).
+#   # Branded hosts carry no "successfactors" string, so set provider: explicitly
+#   # and point api: at the board origin (host only, no path). The provider pulls
+#   # the public /tile-search-results fragment (zero-token, no auth).
+#   careers_url: https://www.exampleco.com/careers   # public/branded careers page
+#   provider: successfactors
+#   api: https://jobs.exampleco.com                  # RMK board origin
+#   enabled: true
+#
+# - name: SolidJobs — Engineering
+#   # division path is required; one of:
+#   # it, engineering, marketing, sales, hr, logistics, finances, other
+#   careers_url: https://solid.jobs/public-api/offers/engineering
+#   enabled: true
+#
+# -- Job boards / aggregators (no careers_url; set provider: explicitly) --
+#
+# - name: Amazon / AWS                    # global amazon.jobs board
+#   provider: amazon
+#   amazon:                # keys pass straight through to the search.json API
+#     normalized_country_code: [DEU]   # array → facet filter (…[]=DEU); REQUIRED-ish,
+#                                       # the board is 100k+ postings otherwise
+#     base_query: machine learning      # optional keyword filter
+#     # loc_query: Berlin               # optional free-text location (fuzzy, not a hard filter)
+#   enabled: true
+#
+# - name: 4 Day Week                      # 4-day-week / reduced-hours roles
+#   provider: 4dayweek
+#   max_pages: 3          # optional page cap (25 jobs/page, default 3, max 50)
+#   enabled: true
+#
+# - name: The Hub                         # Nordic/EU startup board
+#   provider: thehub
+#   max_pages: 3          # optional page cap (15 jobs/page, default 3, max 67)
+#   enabled: true
+#
+# - name: Arbeitnow                       # EU/DACH-heavy board, newest-first
+#   provider: arbeitnow
+#   max_pages: 3          # optional page cap (100 jobs/page, default 3, max 50)
+#   enabled: true
+#
+# - name: Arbeitsagentur — AI Roles      # German federal jobs API
+#   provider: arbeitsagentur
+#   arbeitsagentur:
+#     keywords: ["AI Engineer", "Machine Learning"]  # required (>=1)
+#     wo: Berlin          # optional anchor city ('' / omit = all of Germany)
+#     umkreis: 50         # optional km radius around wo (0-1000)
+#     days: 30            # optional recency window (1-1000)
+#     size: 100           # optional results per keyword (1-100)
+#   enabled: true
+#
+# - name: Glints — Indonesia             # SE-Asia aggregator (SG/ID/MY/VN)
+#   provider: glints
+#   searchKeywords: "AI Engineer"
+#   countryCode: ID       # optional 2-letter code (default ID)
+#   enabled: true
+#
+# - name: Jobstreet — Indonesia          # SEEK aggregator
+#   provider: jobstreet
+#   searchKeywords: "Software Engineer"
+#   siteKey: ID-Main      # SEEK site key (ID-Main, SG-Main, MY-Main)
+#   searchLocation: ""    # optional location filter
+#   enabled: true
+#
+# - name: IBM — Germany SWE              # IBM global careers
+#   provider: ibm
+#   ibm:
+#     country: Germany                      # optional facet filter
+#     categories: ["Software Engineering"]  # optional facet filter
+#   enabled: true
+#
+# - name: Dassault Systèmes              # single-company; Exalead card_search_api
+#   careers_url: https://www.3ds.com/careers/jobs   # auto-detects on *.3ds.com
+#   provider: dassault                    # optional — 3ds.com host also auto-detects
+#   enabled: true                         # ~445 English postings (zero-token XML)
+#
+# - name: Deutsche Bahn                   # single-company; db.jobs Avature front
+#   careers_url: https://db.jobs          # auto-detects; SSR search, paginated over HTTP
+#   provider: deutschebahn                # optional — db.jobs host also auto-detects
+#   enabled: true
+#
+# - name: Heckler & Koch                  # single-company; SSR Nuxt vacancy list
+#   careers_url: https://www.heckler-koch.com/de/Karriere/Stellenangebote
+#   provider: hecklerkoch                 # optional — heckler-koch.com host also auto-detects
+#   enabled: true
+#
+# - name: Rheinmetall                     # single-company; SSR Nuxt vacancy list
+#   careers_url: https://www.rheinmetall.com/en/career/vacancies
+#   provider: rheinmetall                 # optional — rheinmetall.com host also auto-detects
+#   enabled: true
+#
+# - name: OHB                             # Cornerstone OnDemand (csod) branded site
+#   careers_url: https://career-ohb.csod.com/ux/ats/careersite/4/home?c=career-ohb
+#   provider: csod                        # anonymous-JWT bootstrap, then public search API
+#   enabled: true
+#
+# - name: RENK                            # softgarden hosted job widget
+#   careers_url: https://renk-group.softgarden.io/de/widgets/jobs
+#   provider: softgarden
+#   enabled: true
+#
+# - name: Mercedes-Benz                   # BeeSite (milch & zucker) search backend
+#   careers_url: https://mercedes-benz.app.beesite.de   # the *.app.beesite.de host, not the branded front
+#   provider: beesite
+#   enabled: true
+#
+# -- Remote-job feeds (no careers_url, no extra fields) --
+# title_filter / location_filter defined above still apply.
+#
+# - name: Himalayas
+#   provider: himalayas
+# - name: Landing.jobs                    # tech board, Europe-focused
+#   provider: landingjobs
+#   enabled: true
+#
+# - name: RemoteOK
+#   provider: remoteok
+#   enabled: true
+#
+# - name: Remotive
+#   provider: remotive
+#   enabled: true
+#
+# - name: Get on Board
+#   provider: getonbrd
+#   enabled: true
+#
+# - name: NoDesk
+#   provider: nodesk
+#   enabled: true
+#
+# - name: We Work Remotely
+#   provider: weworkremotely
+#   enabled: true
+#
+# - name: Working Nomads
+#   provider: workingnomads
+#   enabled: true
+#
+# - name: Jobicy
+#   provider: jobicy
+#   enabled: true
+#
+# - name: EchoJobs                        # tech jobs aggregated from company ATS boards
+#   provider: echojobs
+#   max_pages: 3                          # 100 jobs/page; raise for deeper coverage
+#   enabled: true
+#
+# - name: Hacker News "Who is hiring?"    # monthly "Ask HN: Who is hiring?" thread
+#   provider: hackernews
+#   enabled: true
+#
+# - name: Jobspresso                      # curated remote roles (public WordPress feed)
+#   provider: jobspresso
+#   enabled: true
+#
+# - name: The Muse                        # board-wide public jobs API
+#   provider: themuse
+#   enabled: true
+#
+# - name: LaraJobs                        # Laravel / PHP jobs (public RSS feed)
+#   provider: larajobs
+#   enabled: true
+#
+# Comeet needs the full careers-api URL (it carries a per-tenant token that a
+# branded careers page does not expose), so set it via the api: field — e.g.:
+#
+#   - name: Spark Hire
+#     careers_url: https://www.comeet.com/jobs/spark-hire/30.005
+#     api: https://www.comeet.co/careers-api/2.0/company/30.005/positions?token=YOUR_TOKEN
+#     enabled: true
+#
+# Find <uid> and <token> in Comeet under Settings → Sourcing → Careers Website →
+# Integrated website → Careers API.
+#
+# Personio (common across DACH/EU) auto-detects from its careers host and
+# pulls the public no-auth XML feed at <slug>.jobs.personio.de/xml — e.g.:
+#
+#   - name: Example GmbH
+#     careers_url: https://example-gmbh.jobs.personio.de
+#     enabled: true
+#
+# Teamtailor auto-detects from a <slug>.teamtailor.com careers host and reads
+# the public no-auth /jobs.rss feed — e.g.:
+#
+#   - name: Example Co
+#     careers_url: https://example.teamtailor.com
+#     enabled: true
+#
+#   # If the tenant fronts a branded careers domain, set provider: teamtailor
+#   # explicitly and point careers_url at that host (it serves the same feed):
+#   - name: Example Co (branded)
+#     careers_url: https://careers.example.com
+#     provider: teamtailor
+#     enabled: true
+#
+# Some JibeApply sites run on a branded custom domain rather than
+# *.jibeapply.com (iCIMS acquired Jibe in 2019, and tenants can front the
+# same API on their own domain). Set provider: jibeapply and point api: at
+# the branded host's /api/jobs endpoint — e.g.:
+#
+#   - name: Booking.com
+#     careers_url: https://jobs.booking.com/booking/jobs
+#     api: https://jobs.booking.com/api/jobs
+#     provider: jibeapply
+#     enabled: true
+
+# -- Company aliases (optional) --
+# Map alternate company names to a single canonical label so the scanner's
+# company+role dedup matches your tracker. The scanner keys dedup on the name a
+# provider returns — usually the ATS org (e.g. Greenhouse "Intercom") — which
+# may differ from the brand you track (e.g. "Fin"). Without an alias, the same
+# role is re-scanned and re-evaluated every run because "intercom::role" never
+# matches "fin::role" in data/applications.md.
+#
+# Format: `CanonicalName: [alias, ...]`. Every alias AND the canonical name
+# resolve to the canonical label (case-insensitive). Companies with no entry are
+# unaffected. Combined with title normalization, this suppresses URL-new
+# duplicates caused by requisition URL changes and per-location title splits
+# ("Engineer (Berlin)" vs "Engineer"). It does not classify repost patterns or
+# produce `postingChurn` evidence; detect-reposts.mjs and company-history.mjs own
+# that post-tracking layer.
+#
+# company_aliases:
+#   Fin: [Intercom]
+
+tracked_companies:
+
+  # Remote / remote-first aggregators only (+ SAP careers).
+  # Do NOT add random company ATS boards unless the user asks.
+
+  - name: Himalayas
+    careers_url: https://himalayas.app/jobs
+    scan_method: local_parser
+    parser:
+      command: node
+      script: local/parsers/himalayas-paged.mjs
+      args: ["40"]
+      format: jobs-json-v1
+    enabled: true
+    notes: "Local parser: pages the newest 40 pages (800 jobs); the upstream provider reads only 20 of ~96,000."
+
+  - name: 4 Day Week
+    provider: 4dayweek
+    max_pages: 3
+    enabled: true
+
+  - name: RemoteOK
+    careers_url: https://remoteok.com
+    scan_method: local_parser
+    parser:
+      command: node
+      script: local/parsers/dated-feeds.mjs
+      args: ["remoteok"]
+      format: jobs-json-v1
+    enabled: true
+    notes: "Local parser: adds the posting date the upstream provider drops, so the 45-day filter works."
+
+  - name: Remotive
+    careers_url: https://remotive.com
+    scan_method: local_parser
+    parser:
+      command: node
+      script: local/parsers/dated-feeds.mjs
+      args: ["remotive"]
+      format: jobs-json-v1
+    enabled: true
+    notes: "Local parser: adds the posting date the upstream provider drops."
+
+  - name: NoDesk
+    provider: nodesk
+    enabled: false
+    notes: "Off 2026-09-26: RSS carries only 10 items, no locations, 0 title matches."
+
+  - name: We Work Remotely
+    provider: weworkremotely
+    enabled: true
+
+  - name: Working Nomads
+    careers_url: https://www.workingnomads.com
+    scan_method: local_parser
+    parser:
+      command: node
+      script: local/parsers/dated-feeds.mjs
+      args: ["workingnomads"]
+      format: jobs-json-v1
+    enabled: true
+    notes: "Local parser: adds the posting date the upstream provider drops."
+
+  - name: Jobicy
+    provider: jobicy
+    enabled: true
+
+  - name: EchoJobs
+    provider: echojobs
+    max_pages: 3
+    enabled: false
+    notes: "Often HTTP 403 — disabled to keep scans clean."
+
+  - name: Jobspresso
+    provider: jobspresso
+    enabled: false
+    notes: "Off 2026-09-26: 10 items, mostly older than 45 days."
+
+  - name: The Muse
+    provider: themuse
+    enabled: false
+    notes: "Off 2026-09-26: reads 2,000 of 414,149 jobs in ~134 s, 64% older than 45 days (up to 618), no dates, category filter ignored."
+
+  - name: JustRemote
+    provider: justremote
+    enabled: true
+
+  # ── Startup directory boards (lane D — see docs §3.6) ───────────────
+  - name: a16z Speedrun Talent
+    careers_url: https://speedrun-talent-network.com
+    provider: a16z-speedrun-talent
+    # 50 jobs per page, per query. Queries are title_filter.positive plus
+    # config/profile.yml target_roles — not a hardcoded phrase. Each query
+    # stops at the feed's own total_pages. "Software Engineer" alone is ~51
+    # pages (2026-10-17); this budget is headroom for that one title.
+    max_pages: 80
+    enabled: true
+    # Checked 2026-09-27: the API isn't sorted by date at all (page 1 mixed 2020/2024/2026
+    # postings; a `sort=recent` param has no effect), so `postedAt` on a short sample
+    # has no relationship to what's actually new. A 24-48h freshness cutoff would
+    # reject almost everything essentially at random, not by staleness.
+    # Title/location filtering still applies; only the age cutoff is skipped for this source.
+    posting_age_filter: false
+    notes: "a16z / Speedrun portfolio startups. No q: here on purpose — the provider searches each title_filter.positive phrase and each profile target role separately. One joined OR query returns 0 (checked 2026-09-26). Set q: only to override that list with a single phrase."
+
+  - name: Hacker News Who is Hiring
+    careers_url: https://news.ycombinator.com/submitted?id=whoishiring
+    scan_method: local_parser
+    parser:
+      command: node
+      script: local/parsers/hackernews-fixed.mjs
+      format: jobs-json-v1
+    enabled: true
+    # The thread is monthly, not a rolling feed: a listing posted on day 2 is just as valid to
+    # apply to on day 27 as one posted yesterday — nothing "expires" mid-thread the way a job
+    # board posting does. postedAt here is really "when this comment was added", so the global
+    # 24-48h window would drop most of a perfectly live thread. 720h (30d) instead spans one
+    # thread's life: it naturally rolls off once the next month's thread supersedes this one.
+    posting_age_hours: 720
+    notes: "Local parser: each posting gets its own URL (upstream gave 34 postings the same thread URL, so 33 were dropped as duplicates) and a real location."
+
+  - name: Top Startups
+    careers_url: https://topstartups.io/jobs/?job_location=Remote
+    provider: topstartups
+    job_location: Remote
+    roles:
+      - Software Engineer
+      - Backend Engineer
+      - Full Stack Engineer
+      - Machine Learning Engineer
+    max_pages: 2
+    enabled: true
+    notes: "Funded-startup remote board (topstartups.io). Weekly/on-demand — see docs §3.6."
+
+  - name: Remote.co
+    provider: remoteco
+    enabled: false
+    notes: "Often HTTP 403 / WAF — disabled to keep scans clean."
+
+  - name: Hubstaff Talent
+    provider: hubstaff-talent
+    enabled: false
+    keywords:
+      - software engineer
+      - full stack
+      - backend
+      - ai engineer
+      - sap
+    notes: "Freelance/contract — enable only if freelancing (Perplexity #31)."
+
+  # Peerlist + Wellfound: use india-scan Playwright (+ search_queries backup), not HTTP providers.
+
+  # -- SAP careers (SuccessFactors) --
+  - name: SAP
+    careers_url: https://jobs.sap.com/
+    provider: successfactors
+    api: https://jobs.sap.com
+    # Side lane: SF tiles often exceed the upstream 10s HTTP timeout from India
+    # ("This operation was aborted") → false "broken" on /portals + silent drop
+    # from npm run scan. Scan via: node local/scan-career.mjs --company SAP
+    notes: "BLOCKED 2026-09-27: jobs.sap.com now answers every scripted request (even plain curl) with a Cloudflare 'Just a moment...' bot challenge (HTTP 403), so no scanner can read it. Not worked around on purpose. Find SAP roles on Naukri / LinkedIn (india-scan) or browse jobs.sap.com yourself. Historic note: SAP Labs + global SAP openings via SuccessFactors RMK; local/scan-career.mjs (30s timeout) worked on 2026-08-08."
+    enabled: false
+
+  # -- Advance Auto Parts (Phenom; Workday apply backend) --
+  # Category page: https://jobs.advanceautoparts.com/us/en/c/it-jobs
+  - name: Advance Auto Parts
+    careers_url: https://jobs.advanceautoparts.com/us/en/
+    provider: phenom
+    max_pages: 2
+    phenom:
+      lang: en_us
+      country: us
+      urlPrefix: us/en
+      selectedFields:
+        category: ["IT"]
+    notes: "Phenom widgets API. Category facet IT (~6 roles). Apply may land on Workday. Off 2026-09-26: retail company, 0 title matches for your roles."
+    enabled: false
+
+  # -- EY careers (SuccessFactors) — one-shot test --
+  # https://careers.ey.com/ey/search/?createNewAlert=false&q=&locationsearch&local=en_US
+  - name: EY
+    careers_url: https://careers.ey.com/ey/
+    provider: successfactors
+    api: https://careers.ey.com/ey
+    notes: "EY SuccessFactors RMK (brand path /ey/). Off in npm run scan 2026-09-26: its tile pages take ~10 s and the default 10 s HTTP limit aborts them. Scan with: node local/scan-career.mjs --company EY (30 s limit; 50 jobs in 10 s)."
+    enabled: false
+
+# ── Job Boards ────────────────────────────────────────────────────────
+# Extra multi-employer APIs (SolidJobs, JustJoin, etc.). Kept empty/disabled —
+# India discovery is local/india-scan; remote discovery is tracked_companies above.
+
+job_boards: []

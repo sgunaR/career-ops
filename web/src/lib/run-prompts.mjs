@@ -10,6 +10,7 @@
  * stays read-only.
  */
 import { CV_ENVELOPE_INSTRUCTION } from "./cv-envelope.mjs";
+import { CV_JSON_ENVELOPE_INSTRUCTION } from "./cv-json-envelope.mjs";
 import { REPORT_ENVELOPE_INSTRUCTION } from "./report-envelope.mjs";
 import { COVER_TONES } from "./cover-brief.mjs";
 
@@ -103,7 +104,7 @@ function safeCvTemplate(value) {
     : BASE_CV_TEMPLATE;
 }
 
-export function buildPrompt({ kind, input, memory, today, postedAt, lang, cvTemplate, reportFile, coverBrief }) {
+export function buildPrompt({ kind, input, memory, today, postedAt, lang, cvTemplate, reportFile, coverBrief, houseStyle }) {
   // AGENTS.md's "Output Language vs Market Modes" composition rule. The CLI
   // picks this up by reading AGENTS.md interactively; a one-shot headless
   // prompt has no such chance, so the rule has to be stated in the prompt or a
@@ -160,7 +161,17 @@ Target: ${input}`;
     // cv.md or data/applications.md. The agent now emits the CV inline and the
     // backend (a plain Node process, no CLI sandbox) writes and renders it, so
     // pdf mode runs with no write tool at all.
+    if (houseStyle === "smallcaps") {
+      return `You are tailoring the user's CV for application #${input}, headless, on their machine. The PDF is the small-caps LaTeX house style (local/cv-template.smallcaps.tex), not the HTML template. Follow modes/pdf.md's TAILORING rules and modes/_custom.md's "LaTeX CV house style" rules: keyword injection, ordering, project selection, and the never-invent-a-skill rule. Include every employer from the archetype base CV. Do not fill templates/cv-template.html. Do not run a shell command, doctor.mjs, or update-system.mjs. The platform compiles the PDF.
+1. Read modes/_custom.md, local/build-cv-smallcaps.mjs (payload schema), cv.md, the archetype CV the JD title selects (cv-sap-btp-cpi.md or cv-full-stack.md), config/profile.yml, and the evaluation report at ${JSON.stringify(reportFile ?? `reports/${input}-*.md`)}.
+2. Tailor the summary and competency line to that JD. Keep every experience bullet and every skill row from cv.md. Place each JD phrase that cv.md already supports in the summary, competencies, or a bullet. Reformulate only. Never invent a skill, metric, or employer. Never drop bullets to fit a page.
+3. ${CV_JSON_ENVELOPE_INSTRUCTION}
+4. Emit the envelope EXACTLY ONCE. The platform writes the payload, compiles the LaTeX PDF, and updates the tracker's PDF column itself, only after a confirmed successful compile. Do not submit anything anywhere.
+
+After the envelope, end with EXACTLY one final line: VERDICT: {5 if the complete JSON envelope was emitted, else 1}/5 — {a one-line summary, ≤12 words}`;
+    }
     return `You are tailoring the user's ATS-optimized CV for application #${input}, headless, on their machine. Run the REAL career-ops "pdf" mode's CONTENT step: follow modes/pdf.md's TAILORING rules exactly (do not improvise your own scoring or format). Apply its CONTENT rules — keyword injection, ordering, the competency grid, project selection, and its never-invent-a-skill rule. Its steps that shell out (the jd-skill-gap.mjs check) and its build/save/render steps are NOT performed on web runs; the platform handles output itself.
+  Web-run restriction: do not run doctor.mjs, update-system.mjs, any other shell command, or ask for shell permission. Use the available file-reading and web tools only; the platform has already performed its setup checks.
 1. Read modes/pdf.md, cv.md, config/profile.yml, and the evaluation report at ${JSON.stringify(reportFile ?? `reports/${input}-*.md`)} (for the JD keywords + analysis).
 2. Tailor the CV per modes/pdf.md: inject the JD's keywords into the summary + first bullets, reorder experience by relevance, build the competency grid, pick the top 3–4 projects. NEVER invent skills — only reword REAL experience using the JD's vocabulary.
 3. Fill ${safeCvTemplate(cvTemplate)}'s {{...}} placeholders with the tailored content. Use that exact file: the platform already resolved it from cv.template through cv-templates.mjs, so do NOT run modes/pdf.md's own template-resolution step. ${CV_ENVELOPE_INSTRUCTION}

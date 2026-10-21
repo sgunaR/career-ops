@@ -1,0 +1,64 @@
+# Copy to config.yml (bootstrap preserves config.yml on re-copy).
+
+# Boards to scrape. Implemented: naukri, linkedin, peerlist, cutshort, hirist, instahyre, foundit, indeed-india, wellfound.
+# Planned (skipped): apna
+# Defaults mirror discovery priority (§3.5): LinkedIn+Naukri essential; Peerlist/Cutshort/Hirist/Instahyre primary.
+boards:
+  - naukri
+  - linkedin
+  - peerlist
+  - cutshort
+  - hirist
+  - instahyre
+  - foundit
+  - indeed-india
+  - wellfound
+
+# Search keyword sets — one search per keyword group per board.
+keywords:
+  - - backend engineer
+  - - software engineer
+  - - ai engineer
+  - - sap btp
+  - - sap cpi
+
+max_pages: 2   # default pages per keyword (override with --max-pages N; same idea as job-hunt-ai)
+fetch_full_details: false
+
+# false = headed browser (easier login + fewer bot blocks). true = headless after session exists.
+headless: false
+
+# ── Where to search ─────────────────────────────────────────────────────────────
+# Every board below searches ALL of India by default. Name a city to narrow it.
+
+# LinkedIn: one place or a list; each is searched separately. "India" is exact; any other text
+# is searched as typed (a city, "Singapore", "European Union", "United Arab Emirates").
+# LinkedIn has no "worldwide" search, so list the regions you want.
+linkedin_locations:
+  - India
+# linkedin_remote_only: true keeps only remote roles (all locations above).
+linkedin_remote_only: false
+# How far back to look (days). 1 = LinkedIn "Past 24 hours" (f_TPR=r86400).
+# Other boards request their own 1-day freshness facet when the site exposes one
+# (Naukri jobAge=1, Indeed fromage=1, Foundit jobFreshness=1, Hirist posting=3,
+# Cutshort hiringActivityOnJob=1-days). Instahyre / Wellfound / Peerlist have no
+# day filter on the site; portals.yml max_posting_age_hours still drops older cards.
+linkedin_days: 1
+
+# Blank or "India" = all India. A city (Hyderabad, Bangalore, Pune, ...) narrows the search.
+naukri_location: ""
+foundit_city: India        # India | Hyderabad | Bangalore | Pune | Mumbai | Chennai | Delhi | Noida | Gurgaon
+hirist_location: ""
+indeed_location: India
+instahyre_location: ""     # blank = all India; the site offers Bangalore, Gurgaon, Hyderabad, Work From Home
+cutshort_location: ""
+wellfound_location: india  # india | remote | a city slug such as hyderabad, bengaluru
+
+# Peerlist lists jobs worldwide and cannot filter by place; true keeps only India / worldwide-remote roles.
+peerlist_india_only: true
+
+# Delay between page navigations (ms) — jitter added in scraper.
+request_delay_ms: 2500
+
+# Max new URLs written to pipeline per run (safety cap).
+max_new_offers: 40

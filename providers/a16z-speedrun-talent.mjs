@@ -58,14 +58,45 @@ function resolveMaxPages(entry) {
   return DEFAULT_MAX_PAGES;
 }
 
-/** Optional server-side query: `q:` on the entry, else joined `keywords:`. */
-function resolveQuery(entry) {
-  if (typeof entry?.q === 'string' && entry.q.trim()) return entry.q.trim();
+/**
+ * Queries for this fetch. An explicit `q:` is one search. `keywords:` stays
+ * one joined phrase (the feed treats a space as part of a single query, and
+ * OR / quotes return nothing). With neither set, each configured title and
+ * target role is its own search: joining them would AND the whole list.
+ *
+ * `null` means one unfiltered sweep. The feed's own `q` is omitted then.
+ * @param {any} entry
+ * @param {any} ctx
+ * @returns {(string|null)[]}
+ */
+export function resolveQueries(entry, ctx) {
+  if (typeof entry?.q === 'string' && entry.q.trim()) return [entry.q.trim()];
   if (Array.isArray(entry?.keywords) && entry.keywords.length > 0) {
     const joined = entry.keywords.filter((k) => typeof k === 'string' && k.trim()).join(' ').trim();
-    if (joined) return joined;
+    if (joined) return [joined];
   }
-  return null;
+  const configured = configuredSearchQueries(ctx?.titleKeywords, ctx?.roleKeywords);
+  return configured.length > 0 ? configured : [null];
+}
+
+/** Plain search phrases from title_filter.positive and profile target roles. */
+export function configuredSearchQueries(titleKeywords, roleKeywords) {
+  const seen = new Set();
+  const out = [];
+  const lists = [titleKeywords, roleKeywords];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const raw of list) {
+      if (typeof raw !== 'string') continue;
+      const q = raw.trim();
+      if (!q || q.startsWith('word:') || q.startsWith('stem:')) continue;
+      const key = q.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(q);
+    }
+  }
+  return out;
 }
 
 // NaN-safe Date.parse — `|| undefined` would also coerce a valid epoch 0.
@@ -130,6 +161,65 @@ export function normalizeSpeedrunJob(j, fallbackCompany) {
   return job;
 }
 
+async function fetchQuery(q, maxPages, fallbackCompany, ctx) {
+  const out = [];
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({ page: String(page), source: 'career-ops' });
+    if (q) params.set('q', q);
+    const url = `${FEED_BASE}?${params}`;
+    // redirect:'error' prevents SSRF via server-side redirects.
+    // Retried on transient upstream failures (429/5xx/timeout): this board
+    // paginates into the hundreds of pages, so a single blip mid-sweep used
+    // to abort the whole provider and return NOTHING. Retries are bounded
+    // and, once exhausted, the error still propagates — a silent partial
+    // board would be worse than an loud empty one (#2506).
+    const json = await fetchJsonWithRetry(ctx, url, { redirect: 'error' });
+    if (!json || !Array.isArray(json.jobs)) {
+      throw new Error(
+        `a16z-speedrun-talent: unexpected API response on page ${page} — expected { jobs: [...] }, got keys: [${json ? Object.keys(json).join(', ') : 'null'}]`,
+      );
+    }
+    for (const j of json.jobs) {
+      const normalized = normalizeSpeedrunJob(j, fallbackCompany);
+      if (normalized) out.push(normalized);
+    }
+    // Stop at the last page. Termination priority (#2547):
+    //   1. An empty page always ends iteration — nothing left to read, and
+    //      it bounds a feed that over-reports total_pages instead of burning
+    //      requests up to max_pages.
+    //   2. The feed's own total_pages when present. A page that comes back
+    //      49/50 because a listing was deleted between requests on a board
+    //      that rotates mid-sweep is NOT the last page; treating it as one
+    //      ended the sweep silently, at a clean exit code — the cap warning
+    //      below is gated on max_pages and is never reached from here.
+    //      A non-positive total_pages is not a statement about board size,
+    //      so it counts as absent: a feed reporting 0 alongside 50 real
+    //      rows contradicts itself, and the rows win. Trusting them can
+    //      only cost requests (bounded by rule 1 and max_pages), never jobs.
+    //   3. A short page, only as the fallback for feeds whose total_pages is
+    //      absent or non-positive. Demoting it (rather than merely
+    //      reordering the two checks) is what fixes #2547: a 49-row page
+    //      fails the total_pages test and would still break out on the
+    //      next line.
+    if (json.jobs.length === 0) break;
+    if (Number.isInteger(json.total_pages) && json.total_pages > 0) {
+      if (page + 1 >= json.total_pages) break;
+    } else if (json.jobs.length < PER_PAGE) {
+      break;
+    }
+    // Cap warning (same pattern as jibeapply/workday): the feed had more
+    // pages than we were allowed to read — surface it, with the fix.
+    if (page + 1 >= maxPages && Number.isInteger(json.total_pages) && json.total_pages > maxPages) {
+      const name = typeof fallbackCompany === 'string' && fallbackCompany ? fallbackCompany : 'a16z speedrun talent network';
+      const which = q ? ` for "${q}"` : '';
+      console.error(
+        `⚠️  a16z-speedrun-talent: ${name} truncated at max_pages=${maxPages}${which} (${out.length} of ${Number.isInteger(json.total) ? json.total : 'many'} jobs) — raise max_pages on this entry for more`,
+      );
+    }
+  }
+  return out;
+}
+
 /** @type {Provider} */
 export default {
   id: 'a16z-speedrun-talent',
@@ -152,61 +242,20 @@ export default {
   async fetch(entry, ctx) {
     assertFeedUrl(FEED_BASE);
     const maxPages = resolveMaxPages(entry);
-    const q = resolveQuery(entry);
+    const queries = resolveQueries(entry, ctx);
     const fallbackCompany = entry?.name;
+    const seen = new Set();
     const out = [];
+    const dedupe = queries.length > 1;
 
-    for (let page = 0; page < maxPages; page++) {
-      const params = new URLSearchParams({ page: String(page), source: 'career-ops' });
-      if (q) params.set('q', q);
-      const url = `${FEED_BASE}?${params}`;
-      // redirect:'error' prevents SSRF via server-side redirects.
-      // Retried on transient upstream failures (429/5xx/timeout): this board
-      // paginates into the hundreds of pages, so a single blip mid-sweep used
-      // to abort the whole provider and return NOTHING. Retries are bounded
-      // and, once exhausted, the error still propagates — a silent partial
-      // board would be worse than an loud empty one (#2506).
-      const json = await fetchJsonWithRetry(ctx, url, { redirect: 'error' });
-      if (!json || !Array.isArray(json.jobs)) {
-        throw new Error(
-          `a16z-speedrun-talent: unexpected API response on page ${page} — expected { jobs: [...] }, got keys: [${json ? Object.keys(json).join(', ') : 'null'}]`,
-        );
-      }
-      for (const j of json.jobs) {
-        const normalized = normalizeSpeedrunJob(j, fallbackCompany);
-        if (normalized) out.push(normalized);
-      }
-      // Stop at the last page. Termination priority (#2547):
-      //   1. An empty page always ends iteration — nothing left to read, and
-      //      it bounds a feed that over-reports total_pages instead of burning
-      //      requests up to max_pages.
-      //   2. The feed's own total_pages when present. A page that comes back
-      //      49/50 because a listing was deleted between requests on a board
-      //      that rotates mid-sweep is NOT the last page; treating it as one
-      //      ended the sweep silently, at a clean exit code — the cap warning
-      //      below is gated on max_pages and is never reached from here.
-      //      A non-positive total_pages is not a statement about board size,
-      //      so it counts as absent: a feed reporting 0 alongside 50 real
-      //      rows contradicts itself, and the rows win. Trusting them can
-      //      only cost requests (bounded by rule 1 and max_pages), never jobs.
-      //   3. A short page, only as the fallback for feeds whose total_pages is
-      //      absent or non-positive. Demoting it (rather than merely
-      //      reordering the two checks) is what fixes #2547: a 49-row page
-      //      fails the total_pages test and would still break out on the
-      //      next line.
-      if (json.jobs.length === 0) break;
-      if (Number.isInteger(json.total_pages) && json.total_pages > 0) {
-        if (page + 1 >= json.total_pages) break;
-      } else if (json.jobs.length < PER_PAGE) {
-        break;
-      }
-      // Cap warning (same pattern as jibeapply/workday): the feed had more
-      // pages than we were allowed to read — surface it, with the fix.
-      if (page + 1 >= maxPages && Number.isInteger(json.total_pages) && json.total_pages > maxPages) {
-        const name = typeof fallbackCompany === 'string' && fallbackCompany ? fallbackCompany : 'a16z speedrun talent network';
-        console.error(
-          `⚠️  a16z-speedrun-talent: ${name} truncated at max_pages=${maxPages} (${out.length} of ${Number.isInteger(json.total) ? json.total : 'many'} jobs) — raise max_pages on this entry or narrow with q: for more`,
-        );
+    for (const q of queries) {
+      const batch = await fetchQuery(q, maxPages, fallbackCompany, ctx);
+      for (const job of batch) {
+        if (dedupe) {
+          if (seen.has(job.url)) continue;
+          seen.add(job.url);
+        }
+        out.push(job);
       }
     }
     return out;

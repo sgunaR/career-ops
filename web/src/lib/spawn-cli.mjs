@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 import { fenceArgs } from "./cli-fencing.mjs";
 import { prepareCliLaunch } from "./cli-launch.mjs";
 
@@ -58,17 +59,52 @@ export function spawnHeadlessCli(binPath, args, options, fencing) {
     );
   }
   const { args: fencedArgs } = fenceArgs({ ...fencing, args });
-  // On Windows an npm-installed CLI is a script shim spawn() cannot run without a
-  // shell, so launch the .js/.exe it wraps (a no-op elsewhere; cli-launch.mjs).
   // After fencing, so the fencers see the CLI's own argv rather than node's.
-  const launch = prepareCliLaunch(binPath, fencedArgs);
+  // npm Windows shims resolve to their real .js/.exe (cli-launch.mjs). A
+  // wrapper that resolver cannot read — VS Code's Copilot .ps1 is the known
+  // case — still launches through PowerShell or cmd.
+  let command = binPath;
+  let commandArgs = fencedArgs;
+  try {
+    const launch = prepareCliLaunch(binPath, fencedArgs);
+    command = launch.command;
+    commandArgs = launch.args;
+  } catch {
+    const resolved = resolveSpawnCommand(binPath, fencedArgs);
+    command = resolved.command;
+    commandArgs = resolved.commandArgs;
+  }
   // windowsHide: on Windows a child attaches to the parent's console. A
   // long-lived dev server whose console has gone stale then kills EVERY child
   // at DLL init with 0xC0000142 (STATUS_DLL_INIT_FAILED), in ~20 ms and with no
   // output at all; the same spawn with windowsHide (CREATE_NO_WINDOW) succeeds.
   // Nothing spawned here needs a console, so never inherit one. Set after the
   // caller's options so no caller can opt back in. No-op on POSIX (#3809).
-  const child = spawn(launch.command, launch.args, { ...options, windowsHide: true });
+  const child = spawn(command, commandArgs, { ...options, windowsHide: true });
   child.stdin?.end();
   return child;
+}
+
+/**
+ * Resolve the actual Windows host process for a CLI launcher.
+ *
+ * @param {string} binPath
+ * @param {string[]} args
+ * @param {{platform?: string, comSpec?: string}} [runtime]
+ */
+export function resolveSpawnCommand(binPath, args, runtime = {}) {
+  const platform = runtime.platform ?? process.platform;
+  const comSpec = runtime.comSpec ?? process.env.ComSpec ?? "cmd.exe";
+  const extension = path.extname(binPath).toLowerCase();
+  let command = binPath;
+  let commandArgs = args;
+
+  if (platform === "win32" && extension === ".ps1") {
+    command = "powershell.exe";
+    commandArgs = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", binPath, ...args];
+  } else if (platform === "win32" && [".bat", ".cmd"].includes(extension)) {
+    command = comSpec;
+    commandArgs = ["/d", "/s", "/c", "call", binPath, ...args];
+  }
+  return { command, commandArgs };
 }
