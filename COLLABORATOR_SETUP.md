@@ -16,12 +16,12 @@ git checkout feature/sguna-customizations
 
 ## What is shared vs yours alone
 
-| Shared starter (already in the repo — edit for yourself) | Keep local / do not commit |
-|----------------------------------------------------------|----------------------------|
-| `portals.yml` — boards & filters | `local/` — CV template, india-scan runtime |
-| `modes/_profile.md` — role archetypes | `data/`, `output/`, `reports/`, `jds/`, `tmp/` |
-| `modes/_custom.md` — team workflow | `.env`, scan history, generated PDFs |
-| `cv.md` + `config/profile.yml` — **replace with your details** | |
+| In the repo (use as setup / examples) | Keep local / do not commit |
+|--------------------------------------|----------------------------|
+| `portals.yml` — boards & filters (shared) | `local/` — CV template, india-scan runtime |
+| `modes/_profile.md` — role archetypes (shared) | `data/`, `output/`, `reports/`, `jds/`, `tmp/` |
+| `modes/_custom.md` — team workflow (shared) | `.env`, scan history, generated PDFs |
+| `cv.md` + `config/profile.yml` — **Guna’s example; rewrite with your facts** | |
 | Providers, `/local` web UI, india-scan **templates** | |
 
 ---
@@ -46,29 +46,156 @@ npx playwright install chromium
 
 ---
 
-## 3. Make the starter profile + CV yours
+## 3. Configure your profile + CV (use Guna’s files as the example)
 
-The repo already includes `cv.md` and `config/profile.yml` as a **starter**.  
-**Edit both** so they are *your* name, contact, experience, and targets — do not leave someone else’s details.
+The repo ships **working examples** from Guna’s setup:
 
-```bash
-# Open and rewrite for yourself:
-#   config/profile.yml
-#   cv.md
-# Or ask the AI: "Replace the profile and CV with my details from …"
+| File | What it is |
+|------|------------|
+| [`config/profile.yml`](config/profile.yml) | Example profile (contact, roles, YOE, narrative, comp) |
+| [`cv.md`](cv.md) | Example CV layout (headline, dual Full-Stack + SAP sections, skills, experience) |
+| [`modes/_profile.md`](modes/_profile.md) | Shared targeting (keep unless the team changes archetypes) |
+
+**Do not leave his name/email/experience.** Keep the **same structure**; put **your** facts in every field.
+
+### 3a. `config/profile.yml` — what to change
+
+Open `config/profile.yml` and walk the blocks below. Guna’s values are the pattern; yours go in the same places.
+
+**1. Contact (`candidate:`)**
+
+```yaml
+# EXAMPLE (Guna) — replace with yours
+candidate:
+  full_name: "Guna Sekhar"
+  email: "hi@sguna.dev"
+  phone: "6309665267"
+  location: "Hyderabad, Telangana, India"
+  linkedin: "linkedin.com/in/sgunaar"
+  portfolio_url: "https://sguna.dev"
+  github: "https://github.com/sgunaR"
 ```
 
-Optional extras (if you want brief / voice):
+Change: `full_name`, `email`, `phone`, `location`, `linkedin`, `portfolio_url`, `github`.
 
-```bash
-node doctor.mjs --json --init-templates
+**2. Target roles + YOE (`target_roles:`)**
+
+```yaml
+# EXAMPLE (Guna) — same shape; your titles + years
+target_roles:
+  primary:
+    - "SAP Consultant (SAP BTP & CPI)"
+    - "Full Stack Engineer (Applied AI + DevOps)"
+  years_experience: 2.5
+  archetypes:
+    - name: "SAP Consultant (SAP BTP & CPI)"
+      level: "Mid"
+      fit: "primary"
+    - name: "Full Stack Engineer (Applied AI + DevOps)"
+      level: "Mid"
+      fit: "primary"
 ```
 
-Check:
+Change: role names if yours differ, `years_experience`, archetype `level` / `fit`.  
+If you keep the same two archetypes as the team, you can leave titles as-is and only fix YOE/level.
+
+**3. Story (`narrative:`)**
+
+```yaml
+# EXAMPLE (Guna) — rewrite in your voice; keep one headline + exit_story + superpowers
+narrative:
+  headline: "Full Stack + Applied AI  ·  SAP BTP & CPI Consultant"
+  exit_story: "Software engineer with ~2.5 years in Full-Stack + Applied AI …"
+  superpowers:
+    - "Full-stack delivery with Node.js, React, and Next.js"
+    - "…"
+  proof_points:
+    - name: "SAP BTP Integration Delivery"
+      hero_metric: "Designed and delivered 20+ iFlows …"
+```
+
+Change: `headline`, `exit_story`, every `superpowers` bullet, every `proof_points` metric — only claims that are true for **you**.
+
+**4. Comp + location (`compensation:` / `location:`)**
+
+```yaml
+# EXAMPLE (Guna)
+compensation:
+  target_range: "900000-1300000"
+  currency: "INR"
+  minimum: "900000"
+location:
+  country: "India"
+  city: "Hyderabad"
+  timezone: "IST"
+```
+
+Set your own range, currency, city, timezone.
+
+**Quick AI prompt (in this repo):**
+
+> Using `config/profile.yml` as the example structure (Guna’s), rewrite it with my details: [paste LinkedIn / bullets]. Keep the same YAML keys. Do not invent metrics.
+
+### 3b. `cv.md` — what to change
+
+Open `cv.md`. Keep the **sections and shape**; swap content for yours.
+
+**Structure to mirror (Guna’s example):**
+
+1. `# Your Name`  
+2. One-line headline (e.g. role mix)  
+3. `## Contact` — email, phone, LinkedIn, portfolio, GitHub, location  
+4. `## Summary` — ~2–4 sentences, honest YOE  
+5. `## Core Competencies` — labeled groups (his example: Full-Stack + Applied AI, then SAP BTP & CPI)  
+6. `## Skills` — Cloud / Testing / etc. as short lists  
+7. `## Experience` — `### Company — Location`, then `**Title**`, dates, bullets (verb-led; only real work)  
+8. `## Education` / `## Languages`
+
+**EXAMPLE shape from Guna’s CV (do not copy facts):**
+
+```markdown
+# Guna Sekhar
+
+**Full Stack + Applied AI  ·  SAP BTP & CPI Consultant**
+
+## Contact
+- Email: hi@sguna.dev
+- …
+
+## Summary
+Software engineer with ~2.5 years of experience shipping full-stack …
+
+## Core Competencies
+### Full-Stack + Applied AI & Deployment
+- …
+### SAP BTP & CPI
+- …
+
+## Experience
+### Proclink — Hyderabad, India
+**Software Developer**
+May 2024 - Present
+- …
+```
+
+Your version: same headings; **your** employers, titles, dates, bullets, skills.  
+If you only do Full-Stack (no SAP), keep one competency/skills block — still use the same markdown conventions so PDF generation works.
+
+**Quick AI prompt:**
+
+> Using `cv.md` as the layout example (Guna’s), rewrite the entire file with my experience from [paste]. Keep section names. Keywords reformulate only — never invent employers or metrics.
+
+### 3c. Verify
 
 ```bash
 node doctor.mjs --json
 # Want: "onboardingNeeded": false
+```
+
+Optional extras (brief / voice only — not required for scanning):
+
+```bash
+node doctor.mjs --json --init-templates
 ```
 
 ---
@@ -172,17 +299,18 @@ git merge upstream/main
 # fix conflicts if any, then push to origin
 ```
 
-Your `cv.md`, `config/profile.yml`, `local/`, and `data/` stay local and are not overwritten by git.
+`local/` and `data/` stay on your machine (gitignored). Tracked files like `cv.md` / `profile.yml` update when you `git pull` — if you customized them locally, resolve conflicts carefully or stash first.
 
 ---
 
 ## 9. What to commit vs not
 
-**OK to commit (team):** `portals.yml`, modes, providers, docs, and updates to the shared starter `cv.md` / `config/profile.yml` only when you intend the whole team to get that change.
+**OK to commit (team):** `portals.yml`, modes, providers, docs.  
+**Example profile/CV:** already in the repo as Guna’s reference — only push changes to them if the team wants a new shared example.
 
 **Do not commit:** `.env`, `local/`, `data/`, `output/`, `reports/`, `jds/`, `tmp/`, PDFs, scan history.
 
-If you only customized profile/CV for yourself on a shared machine, avoid pushing those personal edits unless the team agrees.
+After you personalize `cv.md` / `profile.yml` for yourself, prefer keeping those edits local (or on a private branch) so you don’t overwrite the shared example for everyone.
 
 ---
 
@@ -190,7 +318,7 @@ If you only customized profile/CV for yourself on a shared machine, avoid pushin
 
 | Symptom | Fix |
 |---------|-----|
-| `onboardingNeeded: true` | Add `cv.md` + `config/profile.yml`; re-run `node doctor.mjs --json` |
+| `onboardingNeeded: true` | Finish editing `cv.md` + `config/profile.yml` (see §3); re-run `node doctor.mjs --json` |
 | No `local/india-scan` | `node templates/india-scan/bootstrap.mjs` |
 | India board empty / blocked | Run `--login <board>` once; see `templates/india-scan/README.md` |
 | `/local` pages missing after pull | Ask for `node local/restore-dashboard-local.mjs` (needs `local/` toolkit) or re-check you are on `feature/sguna-customizations` |
