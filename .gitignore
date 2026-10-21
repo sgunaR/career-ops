@@ -206,6 +206,9 @@ follow-ups.md
 # OpenRouter runner — generated data (personal, never commit)
 data/model-blacklist.json
 
+# GSoC org API cache (strategy/gsoc-orgs.mjs, 24h TTL)
+strategy/.gsoc-cache.json
+
 # OS
 .DS_Store
 *.mov
