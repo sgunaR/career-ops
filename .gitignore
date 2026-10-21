@@ -1,4 +1,4 @@
-# Personal data (user fills these)
+# Personal data (each collaborator keeps their own — copy from examples/templates)
 cv.md
 cv-full-stack.md
 cv-backend.md
@@ -101,19 +101,18 @@ interview-prep/sessions/*
 writing-samples/*
 !writing-samples/README.md
 
-# User config and customization (never auto-updated)
+# Personal profile / voice (each person: copy *.example / *.template → local file)
+# Shared team setup on this fork is NOT ignored: portals.yml, modes/_profile.md,
+# modes/_custom.md — so collaborators get the same boards + targeting + house rules.
 config/profile.yml
 config/cv-facts.json
 config/benchmarks.yml
+modes/_brief.md
+voice-dna.md
 # Fork-local path declarations — this checkout's own files, read by
 # update-system.mjs. Gitignored on purpose: it describes THIS clone, not the
 # project, and must survive the sync that overwrites update-system.mjs (#2421).
 config/local-paths.txt
-portals.yml
-modes/_profile.md
-modes/_custom.md
-modes/_brief.md
-voice-dna.md
 .update-dismissed
 .update-lock
 .manifesto-noted
@@ -274,15 +273,11 @@ data/interview-prep/
 /tectonic.part
 /tectonic.part.exe
 
-# ── This fork (sgunaR/career-ops): ignore scrape / PDF / scratch; track shared config ──
+# ── This fork (sgunaR/career-ops) ──
+# Ignore scrapes / PDFs / scratch. Shared setup (portals.yml, modes/_profile.md,
+# modes/_custom.md) is tracked. Personal CV + config/profile.yml stay local —
+# each collaborator copies config/profile.example.yml → config/profile.yml and
+# writes their own cv.md (see doctor.mjs --init-templates).
 /tmp/
 web/output.log
 rishika-sairi-cv.md
-
-# Override upstream "never commit" defaults so the fork can share targeting + CV.
-# Still keep local/, data/, output/, reports/, jds/ ignored (scan history & PDFs).
-!cv.md
-!portals.yml
-!config/profile.yml
-!modes/_profile.md
-!modes/_custom.md
