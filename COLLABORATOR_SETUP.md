@@ -203,14 +203,17 @@ node doctor.mjs --json --init-templates
 ## 4. Bootstrap `local/` (gitignored — each machine does this once)
 
 `local/` is **ignored on purpose** so upstream updates never overwrite your toolkit.  
-Shareable seeds live in `templates/india-scan/`.
+Shareable seeds live in `templates/cv-smallcaps/` (CV PDFs) and `templates/india-scan/` (India boards).
 
 ```bash
-node templates/india-scan/bootstrap.mjs
+node templates/cv-smallcaps/bootstrap.mjs   # smallcaps LaTeX CV toolkit → local/
+node templates/india-scan/bootstrap.mjs     # India board scanners → local/india-scan/
 ```
 
-That creates `local/india-scan/` on your machine.  
-After later template updates on this branch, run the same command again (it keeps your `local/india-scan/config.yml`).
+**CV path:** after the smallcaps bootstrap you get `local/make-cv.mjs`, `local/cv-template.smallcaps.tex`, etc. Hard max **2 pages**. Needs `tectonic` on PATH and `pip install pymupdf`.
+
+**India path:** creates `local/india-scan/` on your machine.  
+After later template updates on this branch, re-run the matching bootstrap (india-scan keeps your `local/india-scan/config.yml`; smallcaps keeps existing `local/cv-payload-*.example.json` but refreshes the runners/template).
 
 **India board logins** (once per machine, for Naukri / LinkedIn / etc.):
 
@@ -320,6 +323,8 @@ After you personalize `cv.md` / `profile.yml` for yourself, prefer keeping those
 |---------|-----|
 | `onboardingNeeded: true` | Finish editing `cv.md` + `config/profile.yml` (see §3); re-run `node doctor.mjs --json` |
 | No `local/india-scan` | `node templates/india-scan/bootstrap.mjs` |
+| CV gen fails / missing `local/make-cv.mjs` | `node templates/cv-smallcaps/bootstrap.mjs` |
+| CV PDF longer than 2 pages | Trim lowest-priority bullets; keep every employer; re-run with `--max-pages 2` |
 | India board empty / blocked | Run `--login <board>` once; see `templates/india-scan/README.md` |
 | `/local` is **404** | Pull latest `feature/sguna-customizations` (routes live under `web/src/app/local/` and must be tracked). Restart `cd web && npm run dev`. You do **not** need root `local/` for the dashboard pages. |
 | Playwright errors | `npx playwright install chromium` |

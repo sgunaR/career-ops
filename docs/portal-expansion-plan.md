@@ -189,7 +189,8 @@ Do once per machine. From the repo root:
 npm install
 npx playwright install chromium          # PDF + India scrapers
 node doctor.mjs --json                   # want: "onboardingNeeded": false
-node templates/india-scan/bootstrap.mjs  # creates local/india-scan (gitignored)
+node templates/cv-smallcaps/bootstrap.mjs  # smallcaps CV toolkit → local/ (required for PDF gen)
+node templates/india-scan/bootstrap.mjs    # creates local/india-scan (gitignored)
 cd web && npm ci && npm run dev          # web app → http://localhost:3000
 ```
 
@@ -417,12 +418,12 @@ Your standing rule lives in `modes/_custom.md`. In chat, say: *"Generate the LaT
 
 1. Read the report and the JD; write the JD to `jds/<slug>.md`.
 2. Pick the base CV by the table above.
-3. Tailor summary, competencies, bullets and skills from `cv.md` only (reword, never invent) — **every employer and every bullet from `cv.md` goes into the payload, and every skill row stays.** Place JD phrases that `cv.md` already supports in the summary, competencies, or a bullet. Do not drop bullets to fit a page.
-4. Write a JSON payload (schema in the header of `local/build-cv-smallcaps.mjs`). Two real, working starting points exist — copy one rather than writing from scratch: `local/cv-payload-sap.example.json` and `local/cv-payload-fullstack.example.json` (both gitignored, both pass the fact gate as-is).
+3. Tailor summary, competencies, bullets and skills from `cv.md` only (reword, never invent) — **every employer from `cv.md` goes into the payload; skill categories stay.** Place JD phrases that `cv.md` already supports in the summary, competencies, or a bullet. **Hard max 2 pages** — if the page gate fails, trim lowest-priority bullets (never drop an employer).
+4. Write a JSON payload (schema in the header of `local/build-cv-smallcaps.mjs`). After `node templates/cv-smallcaps/bootstrap.mjs`, two starting points exist: `local/cv-payload-sap.example.json` and `local/cv-payload-fullstack.example.json` (gitignored runtime copies; seed is `templates/cv-smallcaps/`).
 5. Run the whole chain with one command:
 
 ```bash
-node local/make-cv.mjs local/cv-payload-sap.example.json --company accenture-india --jd jds/accenture-india.md --max-pages 3 \
+node local/make-cv.mjs local/cv-payload-sap.example.json --company accenture-india --jd jds/accenture-india.md --max-pages 2 \
   --keywords "SAP BTP,Node.js,FastAPI,RAG,..."
 ```
 
@@ -546,7 +547,7 @@ For each source it prints the transport (API / RSS / HTML: none use a browser), 
 | Reports + tracker (evaluations) | `node local/reset-evaluations.mjs --yes` |
 | Throw-away liveness lists | `node local/clean-liveness-temps.mjs --yes` |
 
-**After `git pull` / system update:** `node update-system.mjs check`. Your `local/`, `cv.md`, `profile.yml`, `portals.yml`, `data/` and `modes/_*.md` are never touched. If the web `/local` pages disappear after a messy pull: `node local/restore-dashboard-local.mjs`. Re-run `node templates/india-scan/bootstrap.mjs` after upstream template updates (it keeps your `config.yml`).
+**After `git pull` / system update:** `node update-system.mjs check`. Your `local/`, `cv.md`, `profile.yml`, `portals.yml`, `data/` and `modes/_*.md` are never touched. If the web `/local` pages disappear after a messy pull: `node local/restore-dashboard-local.mjs`. Re-run `node templates/cv-smallcaps/bootstrap.mjs` and/or `node templates/india-scan/bootstrap.mjs` after upstream seed updates (india-scan keeps your `config.yml`; smallcaps refreshes runners/template and keeps existing example payloads).
 
 **Web:** `/local/setup#maintenance` has the health checks and the destructive resets (each asks for confirmation).
 

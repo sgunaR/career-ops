@@ -114,6 +114,7 @@ spend_tier: standard
 cv:
   # latex routes auto-pipeline at modes/latex.md. The dashboard and that mode
   # both compile local/cv-template.smallcaps.tex when it is present.
+  # Seed: node templates/cv-smallcaps/bootstrap.mjs (hard max 2 pages via make-cv).
   output_format: "latex"
   # (Optional) Canva resume design ID for visual CV generation via /career-ops pdf.
   # Find it in your Canva design URL: https://www.canva.com/design/DAxxxxxxx/...

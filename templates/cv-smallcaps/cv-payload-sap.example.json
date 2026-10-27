@@ -1,0 +1,60 @@
+{
+  "_comment": "Real, working example for `node local/make-cv.mjs <this-file> --company <slug> --jd jds/<slug>.md --keywords \"...\"`. Copy this file, rename it (e.g. local/cv-payload.json), then: (1) drop this _comment key, (2) reorder/trim bullets for the target JD, (3) never add a claim that isn't already in cv.md — the fact gate will reject it. Content below is the real Proclink experience from cv.md, unmodified — a safe starting point for any SAP-archetype application.",
+  "name": "Guna Sekhar",
+  "phone": "6309665267",
+  "location": "Hyderabad, Telangana, India",
+  "email": { "url": "mailto:hi@sguna.dev", "display": "hi@sguna.dev" },
+  "linkedin": { "url": "https://www.linkedin.com/in/sgunaar/", "display": "linkedin.com/in/sgunaar" },
+  "github": { "url": "https://github.com/sgunaR", "display": "github.com/sgunaR" },
+  "portfolio": { "url": "https://sguna.dev", "display": "sguna.dev" },
+  "summary": "SAP BTP professional with approximately 2.3 years of experience designing and implementing SAP BTP solutions end-to-end: SAP Integration Suite / CPI delivery (20+ iFlows), SAP BTP administration across Cloud Foundry and Kyma, and AI on BTP (Joule, Generative AI Hub).",
+  "competencies": [
+    "SAP BTP Administration: Cloud Foundry and Kyma",
+    "SAP BTP Integration Suite and SAP CPI (iFlow design, delivery, hypercare)",
+    "SAP Joule and Generative AI Hub",
+    "OAuth 2.0, Basic Authentication, PGP encryption, SAP API Management"
+  ],
+  "experience": [
+    {
+      "company": "Proclink",
+      "location": "Hyderabad, India",
+      "role": "Software Developer",
+      "dates": "May 2024 -- Present",
+      "bullets": [
+        "Designed and delivered 20+ integration flows (iFlows) on SAP BTP Integration Suite, connecting Coupa, Salesforce, ServiceNow, Blue Planner, and Blue Yonder via SFTP, HTTP, SOAP, IDoc, OData, JMS, AS2, Mail, Process Direct, and Salesforce Pub/Sub, transforming JSON and XML payloads.",
+        "Administered SAP BTP across Cloud Foundry and Kyma environments: managed subaccounts, spaces, entitlements, and service instances in Cloud Foundry, and deployed and managed workloads on the Kyma runtime.",
+        "Configured and enabled SAP Joule and used SAP's Generative AI Hub on BTP; built AI-enabled iFlows integrating SAP Integration Suite with AI services.",
+        "Implemented exception handling in iFlows using Exception Subprocess and global and message-specific retry mechanisms, and logging to enterprise observability tools."
+      ]
+    },
+    {
+      "company": "eSource Solutions",
+      "location": "The Woodlands, TX (Remote)",
+      "role": "SAP AI Engineer",
+      "dates": "April 2026 -- June 2026",
+      "bullets": [
+        "Built a FastAPI MCP server translating natural-language requests into structured SAP Integration Suite iFlow calls.",
+        "Engineered MCP endpoints on SAP BTP Cloud Foundry and consolidated them into one FastMCP backend, cutting cloud spend by approximately 70%."
+      ]
+    },
+    {
+      "company": "FlowGen Labs",
+      "location": "San Francisco Bay Area, USA (Remote)",
+      "role": "SAP AI Engineer",
+      "dates": "August 2025 -- February 2026",
+      "bullets": [
+        "Designed an SAP BTP Integration Suite MCP server with a Cloud Foundry proxy layer for secure on-premise connectivity.",
+        "Built enterprise automation using Next.js, XSUAA SSO, FastAPI, CrewAI, and OpenAI."
+      ]
+    }
+  ],
+  "education": [
+    { "institution": "Malla Reddy Engineering College", "location": "Hyderabad, India", "degree": "Bachelor of Technology -- Computer Science", "dates": "2020 -- 2024" }
+  ],
+  "skills": [
+    { "category": "SAP Admin", "items": "Cloud Foundry, Kyma, Destinations, Cloud Connector, IAS/IPS" },
+    { "category": "SAP AI", "items": "Joule, Generative AI Hub" },
+    { "category": "Integration", "items": "iFlows, SOAP, REST, OData, IDoc, SFTP, JMS, AS2, Process Direct" },
+    { "category": "Security", "items": "OAuth 2.0, Basic Auth, PGP, API Management" }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "_comment": "Real, working example for the Full Stack (Applied AI + DevOps) archetype. Use this one when the JD title is Software Engineer / Full Stack Engineer / Developer / Backend Engineer / AI Engineer with no SAP mention (see modes/_profile.md -> 'Which CV for which JD title'). For a SAP-titled JD, start from local/cv-payload-sap.example.json instead. Copy this file, rename it, drop this _comment key, then reorder/trim bullets for the target JD -- never add a claim that isn't already in cv-full-stack.md / cv.md.",
+  "name": "Guna Sekhar",
+  "phone": "6309665267",
+  "location": "Hyderabad, Telangana, India",
+  "email": { "url": "mailto:hi@sguna.dev", "display": "hi@sguna.dev" },
+  "linkedin": { "url": "https://www.linkedin.com/in/sgunaar/", "display": "linkedin.com/in/sgunaar" },
+  "github": { "url": "https://github.com/sgunaR", "display": "github.com/sgunaR" },
+  "portfolio": { "url": "https://sguna.dev", "display": "sguna.dev" },
+  "summary": "Full Stack Engineer with approximately 2.3 years of experience building web applications and backend services with Node.js, React, Next.js, Python, and FastAPI -- across REST, GraphQL, and WebSocket APIs, SQL/NoSQL data stores, and async messaging -- plus hands-on Applied AI experience building MCP servers and agentic orchestration. Also owns the deployment side end-to-end: containerization, orchestration, infrastructure-as-code, CI/CD, and cloud delivery.",
+  "competencies": [
+    "React and Next.js application development",
+    "Node.js and Python (FastAPI) backend services",
+    "REST, GraphQL, and WebSocket API design",
+    "MCP servers and agent tool APIs (Applied AI)",
+    "Docker containerization and Kubernetes orchestration",
+    "Terraform and CI/CD pipelines"
+  ],
+  "experience": [
+    {
+      "company": "Proclink",
+      "location": "Hyderabad, India",
+      "role": "Software Developer",
+      "dates": "May 2024 -- Present",
+      "bullets": [
+        "Built full-stack applications with Node.js and React: backend services (CRUD, business logic, validations) exposed via REST and GraphQL APIs, with WebSockets for real-time features.",
+        "Used PostgreSQL/MySQL, MongoDB, and Redis for data storage and caching, and Kafka/RabbitMQ/AWS SQS for asynchronous messaging between services.",
+        "Containerized services with Docker and orchestrated them with Kubernetes; provisioned cloud infrastructure with Terraform and Ansible/CloudFormation.",
+        "Set up CI/CD pipelines with Jenkins and GitHub Actions with automated testing gates, SonarQube code-quality checks, and Prometheus/Grafana monitoring."
+      ]
+    },
+    {
+      "company": "eSource Solutions",
+      "location": "The Woodlands, TX (Remote)",
+      "role": "AI Engineer",
+      "dates": "April 2026 -- June 2026",
+      "bullets": [
+        "Built a FastAPI MCP server that translates natural-language requests from AI tools into structured calls to SAP Integration Suite iFlows and S/4HANA.",
+        "Engineered multiple MCP endpoints and consolidated them into a single FastMCP backend using dynamic tool registration, cutting cloud spend by approximately 70%."
+      ]
+    },
+    {
+      "company": "FlowGen Labs",
+      "location": "San Francisco Bay Area, USA (Remote)",
+      "role": "AI Engineer",
+      "dates": "August 2025 -- February 2026",
+      "bullets": [
+        "Built the frontend and backend layers of an enterprise automation stack using Next.js, FastAPI, CrewAI orchestration, and OpenAI as the LLM provider.",
+        "Designed an MCP server connecting web-facing AI workflows to SAP BTP Integration Suite."
+      ]
+    }
+  ],
+  "education": [
+    { "institution": "Malla Reddy Engineering College", "location": "Hyderabad, India", "degree": "Bachelor of Technology -- Computer Science", "dates": "2020 -- 2024" }
+  ],
+  "skills": [
+    { "category": "Frontend", "items": "React, Next.js" },
+    { "category": "Backend", "items": "Node.js, FastAPI" },
+    { "category": "APIs", "items": "REST, GraphQL, WebSockets, gRPC" },
+    { "category": "DevOps", "items": "Docker, Kubernetes, Terraform, CI/CD" },
+    { "category": "Applied AI", "items": "MCP, FastMCP, LangGraph, CrewAI" }
+  ]
+}
